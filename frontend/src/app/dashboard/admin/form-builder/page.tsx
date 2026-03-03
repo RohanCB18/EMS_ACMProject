@@ -13,8 +13,8 @@ import {
     Save, Loader2, Upload, FileText, AlignLeft, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+import { RouteGuard } from '@/components/RouteGuard';
+import { fetchApi, ApiError } from '@/lib/api';
 
 // Field Types
 type FieldType = 'text' | 'email' | 'number' | 'checkbox' | 'select' | 'file' | 'textarea';
@@ -60,14 +60,12 @@ export default function FormBuilderPage() {
     const loadSchema = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/registration/schema/${eventId}`);
-            if (res.ok) {
-                const data = await res.json();
-                setFields(data.fields || []);
-                setFormTitle(data.form_title || 'Registration Form');
-                setSaveMessage('Schema loaded from server');
-            }
-        } catch {
+            const data = await fetchApi(`/api/registration/schema/${eventId}`);
+            setFields(data.fields || []);
+            setFormTitle(data.form_title || 'Registration Form');
+            setSaveMessage('Schema loaded from server');
+        } catch (err) {
+            console.error('Failed to load schema:', err);
             // No existing schema — keep defaults
         } finally {
             setLoading(false);
@@ -79,9 +77,8 @@ export default function FormBuilderPage() {
         setSaving(true);
         setSaveMessage(null);
         try {
-            const res = await fetch(`${API_URL}/api/registration/schema`, {
+            await fetchApi('/api/registration/schema', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     event_id: eventId,
                     form_title: formTitle,
@@ -91,15 +88,14 @@ export default function FormBuilderPage() {
                     })),
                 }),
             });
-
-            if (res.ok) {
-                setSaveMessage('✅ Form saved successfully!');
-            } else {
-                const err = await res.json();
-                setSaveMessage(`❌ Error: ${err.detail}`);
-            }
+            setSaveMessage('✅ Form saved successfully!');
         } catch (err) {
-            setSaveMessage('❌ Failed to connect to backend');
+            console.error('Failed to save schema:', err);
+            if (err instanceof ApiError) {
+                setSaveMessage(`❌ Error: ${err.message}`);
+            } else {
+                setSaveMessage('❌ Failed to connect to server');
+            }
         } finally {
             setSaving(false);
             setTimeout(() => setSaveMessage(null), 4000);
