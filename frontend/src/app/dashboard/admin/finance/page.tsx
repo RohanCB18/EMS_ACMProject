@@ -38,13 +38,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#a05195', '#f95d6a'];
 
-const initialMockTransactions = [
-    { id: 'TRX-8923', date: '2026-03-01', description: 'Pizza Delivery (Day 1)', category: 'Food', amount: 850.00, status: 'Paid', method: 'Credit Card' },
-    { id: 'TRX-8924', date: '2026-03-02', description: 'AWS Credits Purchase', category: 'Software', amount: 500.00, status: 'Paid', method: 'Bank Transfer' },
-    { id: 'RMB-1042', date: '2026-03-05', description: 'Travel Grant (Team Alpha)', category: 'Reimbursement', amount: 120.50, status: 'Pending', method: 'Razorpay Payout' },
-    { id: 'TRX-8925', date: '2026-03-08', description: 'Hackathon T-Shirts (Bulk)', category: 'Swag', amount: 1800.00, status: 'Processing', method: 'Wire Transfer' },
-    { id: 'RMB-1045', date: '2026-03-10', description: 'Hardware Purchase (Team Bravo)', category: 'Reimbursement', amount: 350.00, status: 'Pending', method: 'Razorpay Payout' },
-];
+const initialMockTransactions: { id: string; date: string; description: string; category: string; amount: number; status: string; method: string }[] = [];
+
 
 export default function FinanceDashboard() {
     const [activeTab, setActiveTab] = useState('overview');
@@ -311,7 +306,16 @@ export default function FinanceDashboard() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {transactions.map((tx) => (
+                                    {transactions.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Upload className="h-6 w-6 opacity-40" />
+                                                    <p className="text-sm">No transactions yet. Upload a CSV to get started.</p>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : transactions.map((tx) => (
                                         <TableRow key={tx.id}>
                                             <TableCell className="font-medium text-xs">{tx.id}</TableCell>
                                             <TableCell>{tx.date}</TableCell>
