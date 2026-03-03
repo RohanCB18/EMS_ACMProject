@@ -168,8 +168,8 @@ export default function FinanceDashboard() {
                         <ArrowDownRight className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">₹{totalSpent.toFixed(2)}</div>
-                        <p className="text-xs text-muted-foreground">{((totalSpent / 100000) * 100).toFixed(1)}% of total budget</p>
+                        <div className="text-2xl font-bold">₹{totalSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <p className="text-xs text-muted-foreground">{((totalSpent / 1000000) * 100).toFixed(1)}% of total budget</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -179,7 +179,7 @@ export default function FinanceDashboard() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{pendingCount}</div>
-                        <p className="text-xs text-muted-foreground">Totalling ₹{pendingTotal.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">Totalling ₹{pendingTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -188,7 +188,7 @@ export default function FinanceDashboard() {
                         <Landmark className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">₹{(100000 - totalSpent).toFixed(2)}</div>
+                        <div className="text-2xl font-bold">₹{(1000000 - totalSpent).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <p className="text-xs text-muted-foreground">Safe to spend</p>
                     </CardContent>
                 </Card>
