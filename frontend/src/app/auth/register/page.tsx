@@ -1,11 +1,105 @@
-import React from 'react';
+'use client';
+
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Code } from 'lucide-react';
+import { Code, Loader2 } from 'lucide-react';
+import {
+    signUpWithEmail,
+    signInWithGoogle,
+    signInWithGitHub,
+    createUserProfile,
+    verifyTokenWithBackend,
+} from '@/lib/firebase';
 
 export default function RegisterPage() {
+    const router = useRouter();
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [institution, setInstitution] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleEmailRegister = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+
+        try {
+            // Validate password
+            if (password.length < 6) {
+                setError('Password must be at least 6 characters');
+                setLoading(false);
+                return;
+            }
+
+            // Create Firebase auth account
+            const user = await signUpWithEmail(email, password);
+
+            // Create profile in Firestore via backend
+            const displayName = `${firstName} ${lastName}`.trim();
+            await createUserProfile(user, displayName, institution || undefined);
+
+            // Redirect to participant dashboard
+            router.push('/dashboard/participant/overview');
+        } catch (err: unknown) {
+            const error = err as { code?: string; message?: string };
+            if (error.code === 'auth/email-already-in-use') {
+                setError('An account with this email already exists. Try logging in instead.');
+            } else if (error.code === 'auth/weak-password') {
+                setError('Password is too weak. Please use at least 6 characters.');
+            } else if (error.code === 'auth/invalid-email') {
+                setError('Invalid email address.');
+            } else {
+                setError(error.message || 'An error occurred during registration.');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOAuthRegister = async (provider: 'google' | 'github') => {
+        setError(null);
+        setOauthLoading(provider);
+
+        try {
+            const user = provider === 'google'
+                ? await signInWithGoogle()
+                : await signInWithGitHub();
+
+            // Check if profile already exists
+            const result = await verifyTokenWithBackend(user);
+
+            if (!result.profile) {
+                // First-time OAuth — create profile
+                await createUserProfile(
+                    user,
+                    user.displayName || 'User',
+                    undefined
+                );
+            }
+
+            router.push('/dashboard/participant/overview');
+        } catch (err: unknown) {
+            const error = err as { code?: string; message?: string };
+            if (error.code === 'auth/popup-closed-by-user') {
+                // Silent — user closed popup
+            } else if (error.code === 'auth/account-exists-with-different-credential') {
+                setError('An account with this email already exists using a different sign-in method.');
+            } else {
+                setError(error.message || `Failed to sign up with ${provider}`);
+            }
+        } finally {
+            setOauthLoading(null);
+        }
+    };
+
     return (
         <div className="container relative min-h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
             <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
@@ -33,17 +127,37 @@ export default function RegisterPage() {
                         </p>
                     </div>
 
+                    {error && (
+                        <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-md">
+                            {error}
+                        </div>
+                    )}
+
                     <div className="grid gap-6">
-                        <form>
+                        <form onSubmit={handleEmailRegister}>
                             <div className="grid gap-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                         <Label htmlFor="firstName">First name</Label>
-                                        <Input id="firstName" placeholder="Max" required />
+                                        <Input
+                                            id="firstName"
+                                            placeholder="Max"
+                                            value={firstName}
+                                            onChange={(e) => setFirstName(e.target.value)}
+                                            disabled={loading}
+                                            required
+                                        />
                                     </div>
                                     <div className="grid gap-2">
                                         <Label htmlFor="lastName">Last name</Label>
-                                        <Input id="lastName" placeholder="Robinson" required />
+                                        <Input
+                                            id="lastName"
+                                            placeholder="Robinson"
+                                            value={lastName}
+                                            onChange={(e) => setLastName(e.target.value)}
+                                            disabled={loading}
+                                            required
+                                        />
                                     </div>
                                 </div>
                                 <div className="grid gap-2">
@@ -52,15 +166,43 @@ export default function RegisterPage() {
                                         id="email"
                                         type="email"
                                         placeholder="m@example.com"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        disabled={loading}
                                         required
                                     />
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="password">Password</Label>
-                                    <Input id="password" type="password" required />
+                                    <Input
+                                        id="password"
+                                        type="password"
+                                        placeholder="At least 6 characters"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        disabled={loading}
+                                        required
+                                    />
                                 </div>
-                                <Button asChild className="w-full">
-                                    <Link href="/dashboard/participant/overview">Create Account</Link>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="institution">Institution (optional)</Label>
+                                    <Input
+                                        id="institution"
+                                        placeholder="e.g. MIT, Stanford, IIT Bombay"
+                                        value={institution}
+                                        onChange={(e) => setInstitution(e.target.value)}
+                                        disabled={loading}
+                                    />
+                                </div>
+                                <Button type="submit" className="w-full" disabled={loading}>
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Creating account...
+                                        </>
+                                    ) : (
+                                        'Create Account'
+                                    )}
                                 </Button>
                             </div>
                         </form>
@@ -75,8 +217,28 @@ export default function RegisterPage() {
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <Button variant="outline" type="button" disabled>Google</Button>
-                            <Button variant="outline" type="button" disabled>GitHub</Button>
+                            <Button
+                                variant="outline"
+                                type="button"
+                                disabled={!!oauthLoading}
+                                onClick={() => handleOAuthRegister('google')}
+                            >
+                                {oauthLoading === 'google' ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                Google
+                            </Button>
+                            <Button
+                                variant="outline"
+                                type="button"
+                                disabled={!!oauthLoading}
+                                onClick={() => handleOAuthRegister('github')}
+                            >
+                                {oauthLoading === 'github' ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                GitHub
+                            </Button>
                         </div>
                     </div>
                     <p className="px-8 text-center text-sm text-muted-foreground">
