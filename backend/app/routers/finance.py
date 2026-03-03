@@ -40,8 +40,11 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
         # Read the uploaded file into memory
         contents = await file.read()
         
-        # Parse CSS using pandas
-        df = pd.read_csv(BytesIO(contents))
+        # Parse CSV using pandas, trying utf-8 first, then utf-16
+        try:
+            df = pd.read_csv(BytesIO(contents), encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(BytesIO(contents), encoding='utf-16')
         
         # Basic validation to ensure required columns exist
         # We lowercase everything to make it more flexible
