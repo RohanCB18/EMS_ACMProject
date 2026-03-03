@@ -38,20 +38,31 @@ export default function AutomationDashboard() {
     const handleGenerate = async () => {
         setIsGenerating(true);
         try {
-            const response = await fetch("http://localhost:8001/api/automation/certificate/generate", {
+            const response = await fetch("http://localhost:8001/api/automation/certificates/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    participant_name: "John Doe",
+                    name: "Rohan",
+                    role: "Winner",
                     track: "General",
-                    award: "Participant",
-                    include_qr: true
+                    project_name: "Antigravity EMS"
                 })
             });
 
             if (!response.ok) throw new Error("Failed to trigger generation");
 
-            toast.success("Certificate engine triggered successfully!");
+            // Handle the PDF file download from the backend
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `Rohan_Certificate.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+
+            toast.success("Certificate generated and downloaded!");
             document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); // Close modal
         } catch (error) {
             toast.error("Error connecting to backend API");
@@ -73,16 +84,17 @@ export default function AutomationDashboard() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    recipients: ["test1@example.com", "test2@example.com"],
+                    to_emails: ["rohan@example.com"],
                     subject: emailSubject,
-                    body_markdown: emailBody
+                    body: emailBody,
+                    include_certificate_for: "Rohan"
                 })
             });
 
             if (!response.ok) throw new Error("Failed to send email blast");
             toast.success("Emails have been queued for sending!");
         } catch (error) {
-            toast.error("Error connecting to backend API");
+            toast.error("Error connecting to backend email API");
             console.error(error);
         } finally {
             setIsSending(false);
