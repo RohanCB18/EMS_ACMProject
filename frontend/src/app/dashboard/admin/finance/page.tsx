@@ -123,9 +123,6 @@ export default function FinanceDashboard() {
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Report</Button>
-                    <Button onClick={() => handleBankSync()} disabled={isSyncing}>
-                        {isSyncing ? "Syncing..." : <><RefreshCw className="mr-2 h-4 w-4" /> Sync Bank Statement</>}
-                    </Button>
                 </div>
             </div>
 
