@@ -84,13 +84,13 @@ export default function FinanceDashboard() {
             const data = await response.json();
 
             // Transform backend data to match frontend table structure
-            if (data.transactions && Array.isArray(data.transactions)) {
-                const newParsedTx = data.transactions.map((tx: any, index: number) => ({
+            if (data.data && Array.isArray(data.data)) {
+                const newParsedTx = data.data.map((tx: any, index: number) => ({
                     id: `SYNC-${Math.floor(Math.random() * 10000) + index}`,
-                    date: tx.Date || 'Unknown',
-                    description: tx.Description || 'Bank Transaction',
-                    category: tx.Category || 'Other',
-                    amount: Math.abs(tx.Amount || 0),
+                    date: tx.date || 'Unknown',
+                    description: tx.description || 'Bank Transaction',
+                    category: tx.category || 'Other',
+                    amount: Math.abs(tx.amount || 0),
                     status: 'Paid',
                     method: 'Bank Sync'
                 }));
