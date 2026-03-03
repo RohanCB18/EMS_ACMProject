@@ -53,7 +53,7 @@ const monthlySpend = [
     { name: 'Apr', spend: 4200 },
 ];
 
-const mockTransactions = [
+const initialMockTransactions = [
     { id: 'TRX-8923', date: '2026-03-01', description: 'Pizza Delivery (Day 1)', category: 'Food', amount: 850.00, status: 'Paid', method: 'Credit Card' },
     { id: 'TRX-8924', date: '2026-03-02', description: 'AWS Credits Purchase', category: 'Software', amount: 500.00, status: 'Paid', method: 'Bank Transfer' },
     { id: 'RMB-1042', date: '2026-03-05', description: 'Travel Grant (Team Alpha)', category: 'Reimbursement', amount: 120.50, status: 'Pending', method: 'Razorpay Payout' },
@@ -64,6 +64,7 @@ const mockTransactions = [
 export default function FinanceDashboard() {
     const [activeTab, setActiveTab] = useState('overview');
     const [isSyncing, setIsSyncing] = useState(false);
+    const [transactions, setTransactions] = useState(initialMockTransactions);
 
     const handleBankSync = async () => {
         setIsSyncing(true);
@@ -74,13 +75,29 @@ export default function FinanceDashboard() {
             const formData = new FormData();
             formData.append('file', blob, 'mock_statement.csv');
 
-            const response = await fetch("http://localhost:8000/api/finance/upload", {
+            const response = await fetch("http://localhost:8001/api/finance/upload", {
                 method: "POST",
                 body: formData
             });
 
             if (!response.ok) throw new Error("Failed to sync bank statement");
             const data = await response.json();
+
+            // Transform backend data to match frontend table structure
+            if (data.transactions && Array.isArray(data.transactions)) {
+                const newParsedTx = data.transactions.map((tx: any, index: number) => ({
+                    id: `SYNC-${Math.floor(Math.random() * 10000) + index}`,
+                    date: tx.Date || 'Unknown',
+                    description: tx.Description || 'Bank Transaction',
+                    category: tx.Category || 'Other',
+                    amount: Math.abs(tx.Amount || 0),
+                    status: 'Paid',
+                    method: 'Bank Sync'
+                }));
+                // Add new transactions to the top of the list and switch to the ledger tab
+                setTransactions([...newParsedTx, ...transactions]);
+                setActiveTab('transactions');
+            }
 
             toast.success(data.message || "Bank statement synced successfully!");
         } catch (error) {
@@ -149,7 +166,7 @@ export default function FinanceDashboard() {
                 </Card>
             </div>
 
-            <Tabs defaultValue="overview" onValueChange={setActiveTab} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="overview">Overview & Charts</TabsTrigger>
                     <TabsTrigger value="transactions">Ledger & Transactions</TabsTrigger>
@@ -257,7 +274,7 @@ export default function FinanceDashboard() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {mockTransactions.map((tx) => (
+                                    {transactions.map((tx) => (
                                         <TableRow key={tx.id}>
                                             <TableCell className="font-medium text-xs">{tx.id}</TableCell>
                                             <TableCell>{tx.date}</TableCell>
@@ -284,7 +301,7 @@ export default function FinanceDashboard() {
 
                 <TabsContent value="reimbursements" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
-                        {mockTransactions.filter(tx => tx.category === 'Reimbursement' && tx.status === 'Pending').map((tx, i) => (
+                        {transactions.filter(tx => tx.category === 'Reimbursement' && tx.status === 'Pending').map((tx, i) => (
                             <Card key={tx.id} className="border-amber-200/50 shadow-sm relative overflow-hidden">
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
                                 <CardHeader className="pb-2">
