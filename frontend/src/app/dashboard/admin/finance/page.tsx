@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,22 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-// Mock Data
-const expenseData = [
-    { name: 'Food/Catering', value: 4500 },
-    { name: 'Prizes', value: 10000 },
-    { name: 'Venue', value: 2500 },
-    { name: 'Swag/Merch', value: 1800 },
-    { name: 'Marketing', value: 800 },
-];
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
-
-const monthlySpend = [
-    { name: 'Jan', spend: 400 },
-    { name: 'Feb', spend: 3000 },
-    { name: 'Mar', spend: 12000 },
-    { name: 'Apr', spend: 4200 },
-];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#a05195', '#f95d6a'];
 
 const initialMockTransactions = [
     { id: 'TRX-8923', date: '2026-03-01', description: 'Pizza Delivery (Day 1)', category: 'Food', amount: 850.00, status: 'Paid', method: 'Credit Card' },
@@ -65,6 +50,41 @@ export default function FinanceDashboard() {
     const [activeTab, setActiveTab] = useState('overview');
     const [isSyncing, setIsSyncing] = useState(false);
     const [transactions, setTransactions] = useState(initialMockTransactions);
+
+    // Derived chart data — auto-updates whenever transactions change
+    const expenseData = useMemo(() => {
+        const totals: Record<string, number> = {};
+        transactions.forEach(tx => {
+            const cat = tx.category || 'Other';
+            totals[cat] = (totals[cat] || 0) + tx.amount;
+        });
+        return Object.entries(totals).map(([name, value]) => ({ name, value: Math.round(value * 100) / 100 }));
+    }, [transactions]);
+
+    const monthlySpend = useMemo(() => {
+        const monthMap: Record<string, number> = {};
+        transactions.forEach(tx => {
+            const dateStr = tx.date || '';
+            // Parse dates in formats like "2026-03-01" or "03/01/2026"
+            let month = '';
+            if (dateStr.includes('-')) {
+                const parts = dateStr.split('-');
+                month = new Date(dateStr).toLocaleString('default', { month: 'short' });
+            } else if (dateStr.includes('/')) {
+                const [m, , y] = dateStr.split('/');
+                month = new Date(`${y}-${m}-01`).toLocaleString('default', { month: 'short' });
+            } else {
+                month = 'Other';
+            }
+            monthMap[month] = (monthMap[month] || 0) + tx.amount;
+        });
+        return Object.entries(monthMap).map(([name, spend]) => ({ name, spend: Math.round(spend * 100) / 100 }));
+    }, [transactions]);
+
+    // Summary totals derived from live transactions
+    const totalSpent = useMemo(() => transactions.reduce((sum, tx) => sum + tx.amount, 0), [transactions]);
+    const pendingCount = useMemo(() => transactions.filter(tx => tx.status === 'Pending').length, [transactions]);
+    const pendingTotal = useMemo(() => transactions.filter(tx => tx.status === 'Pending').reduce((s, t) => s + t.amount, 0), [transactions]);
 
     const handleBankSync = async (fileToUpload?: File) => {
         setIsSyncing(true);
@@ -143,8 +163,8 @@ export default function FinanceDashboard() {
                         <ArrowDownRight className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">$19,600.00</div>
-                        <p className="text-xs text-muted-foreground">78.4% of total budget</p>
+                        <div className="text-2xl font-bold">${totalSpent.toFixed(2)}</div>
+                        <p className="text-xs text-muted-foreground">{((totalSpent / 25000) * 100).toFixed(1)}% of total budget</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -153,8 +173,8 @@ export default function FinanceDashboard() {
                         <Receipt className="h-4 w-4 text-amber-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">12</div>
-                        <p className="text-xs text-muted-foreground">Totalling $1,420.50</p>
+                        <div className="text-2xl font-bold">{pendingCount}</div>
+                        <p className="text-xs text-muted-foreground">Totalling ${pendingTotal.toFixed(2)}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -163,7 +183,7 @@ export default function FinanceDashboard() {
                         <Landmark className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">$5,400.00</div>
+                        <div className="text-2xl font-bold">${(25000 - totalSpent).toFixed(2)}</div>
                         <p className="text-xs text-muted-foreground">Safe to spend</p>
                     </CardContent>
                 </Card>
