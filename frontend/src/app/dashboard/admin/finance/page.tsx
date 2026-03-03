@@ -340,7 +340,7 @@ export default function FinanceDashboard() {
                                                 {tx.status === 'Processing' && <Badge variant="outline" className="text-blue-500 border-blue-200">Processing</Badge>}
                                             </TableCell>
                                             <TableCell className="text-right font-medium">
-                                                ${tx.amount.toFixed(2)}
+                                                ₹{tx.amount.toFixed(2)}
                                             </TableCell>
                                         </TableRow>
                                     ))}
