@@ -7,12 +7,12 @@ import os
 
 router = APIRouter()
 
-import google.generativeai as genai
+from openai import OpenAI
 
 # Valid categories for the hackathon finance dashboard
 VALID_CATEGORIES = ["Software/Hosting", "Food & Beverage", "Swag/Merch", "Travel", "Prizes", "Sponsorship", "Uncategorized"]
 
-# Rule-based fallback categorizer (used when no Gemini API key is set)
+# Rule-based fallback categorizer (used when no API key is set)
 def _rule_based_categorize(description: str) -> str:
     desc = description.lower()
     if any(k in desc for k in ['aws', 'github', 'vercel', 'azure', 'gcp', 'stripe', 'digitalocean']):
@@ -30,41 +30,46 @@ def _rule_based_categorize(description: str) -> str:
     else:
         return 'Uncategorized'
 
-# Smart AI-powered categorizer
+# Smart AI-powered categorizer using OpenRouter
 def categorize_expense(description: str) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    
+    api_key = os.getenv("OPENROUTER_API_KEY")
+
     # If no API key is configured, use the rule-based fallback directly
-    if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
+    if not api_key:
         return _rule_based_categorize(description)
-    
+
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        
-        prompt = f"""You are a finance AI for a hackathon event. Your job is to categorize bank transactions.
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
 
-Given this bank transaction description: "{description}"
+        response = client.chat.completions.create(
+            model="openrouter/auto",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a finance AI for a hackathon event. Your job is to categorize bank transactions. "
+                        "Classify into EXACTLY one of these categories: "
+                        "Software/Hosting, Food & Beverage, Swag/Merch, Travel, Prizes, Sponsorship, Uncategorized. "
+                        "Reply with ONLY the category name and nothing else."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f'Categorize this bank transaction: "{description}"'
+                }
+            ],
+            max_tokens=10,
+        )
 
-Classify it into EXACTLY one of these categories:
-- Software/Hosting
-- Food & Beverage
-- Swag/Merch
-- Travel
-- Prizes
-- Sponsorship
-- Uncategorized
+        category = response.choices[0].message.content.strip()
 
-Reply with ONLY the category name, nothing else. No explanation."""
-
-        response = model.generate_content(prompt)
-        category = response.text.strip()
-        
         # Validate the response is one of our expected categories
         if category in VALID_CATEGORIES:
             return category
         else:
-            # If Gemini returned something unexpected, fallback to rules
             return _rule_based_categorize(description)
 
     except Exception:
