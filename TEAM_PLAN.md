@@ -1,6 +1,6 @@
 # Hackathon EMS — Team Work Division
 
-> **Rohan** has started working on the **Finance & Automation part** and has already claimed his scope.
+> **Rohan** has started working on the **Finance & Automation part**.
 > The remaining features from the master plan are divided below into **4 equal sets**.
 > Each teammate picks **one set**, creates `backend/<yourname>/` and `frontend` pages as needed, and we integrate at the end.
 
@@ -144,15 +144,8 @@
 
 ---
 
-## 📌 Integration Notes (Rohan will handle)
-At the end, all 4 sets will be merged into one unified FastAPI app and connected to a shared Firebase project. The following cross-cutting services will be provided by Rohan's module and called by all teams:
-
-| Service | Endpoint | Provided by |
-|---|---|---|
-| Send any email | `POST /api/automation/email/blast` | Rohan |
-| Generate certificate PDF | `POST /api/automation/certificates/generate` | Rohan |
-| Finance dashboard data | `GET /api/finance/transactions` | Rohan |
-| Razorpay payout trigger | `POST /api/finance/payout` | Rohan |
+## 📌 Integration Notes
+At the end, all 4 sets will be merged into one unified FastAPI app and connected to a shared Firebase project. 
 
 ## 🗓️ Setup Instructions for Each Teammate
 1. Pull the latest `main` branch
