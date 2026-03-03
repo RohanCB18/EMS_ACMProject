@@ -66,14 +66,20 @@ export default function FinanceDashboard() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [transactions, setTransactions] = useState(initialMockTransactions);
 
-    const handleBankSync = async () => {
+    const handleBankSync = async (fileToUpload?: File) => {
         setIsSyncing(true);
         try {
-            // Create a mock CSV file to upload
-            const csvContent = "Date,Description,Amount\n2023-10-01,AWS Hosting,-150.00\n2023-10-02,Pizza Party,-300.50";
-            const blob = new Blob([csvContent], { type: 'text/csv' });
             const formData = new FormData();
-            formData.append('file', blob, 'mock_statement.csv');
+
+            if (fileToUpload) {
+                // User provided a real file via the drag-and-drop dialog
+                formData.append('file', fileToUpload);
+            } else {
+                // Fallback to mock file if they just press the header button directly
+                const csvContent = "Date,Description,Amount\n2023-10-01,AWS Hosting,-150.00\n2023-10-02,Pizza Party,-300.50";
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                formData.append('file', blob, 'mock_statement.csv');
+            }
 
             const response = await fetch("http://localhost:8001/api/finance/upload", {
                 method: "POST",
@@ -117,7 +123,7 @@ export default function FinanceDashboard() {
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Report</Button>
-                    <Button onClick={handleBankSync} disabled={isSyncing}>
+                    <Button onClick={() => handleBankSync()} disabled={isSyncing}>
                         {isSyncing ? "Syncing..." : <><RefreshCw className="mr-2 h-4 w-4" /> Sync Bank Statement</>}
                     </Button>
                 </div>
@@ -252,9 +258,23 @@ export default function FinanceDashboard() {
                                         <Upload className="h-8 w-8 text-muted-foreground mb-4" />
                                         <p className="text-sm font-medium">Drag & drop your CSV file here</p>
                                         <p className="text-xs text-muted-foreground mt-1">or click to browse from your computer</p>
-                                        <Input type="file" className="hidden" id="csv-upload" />
-                                        <Button variant="secondary" className="mt-4" onClick={() => document.getElementById('csv-upload')?.click()}>
-                                            Select File
+                                        <Input
+                                            type="file"
+                                            className="hidden"
+                                            id="csv-upload"
+                                            accept=".csv"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleBankSync(file);
+                                            }}
+                                        />
+                                        <Button
+                                            variant="secondary"
+                                            className="mt-4"
+                                            onClick={() => document.getElementById('csv-upload')?.click()}
+                                            disabled={isSyncing}
+                                        >
+                                            {isSyncing ? "Uploading..." : "Select File"}
                                         </Button>
                                     </div>
                                 </DialogContent>
