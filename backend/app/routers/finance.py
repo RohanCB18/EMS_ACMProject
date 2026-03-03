@@ -7,21 +7,69 @@ import os
 
 router = APIRouter()
 
-# Mock Categorization Logic (In production, replace with ML or LLM)
-def categorize_expense(description: str) -> str:
-    desc_lower = str(description).lower()
-    if 'aws' in desc_lower or 'github' in desc_lower or 'vercel' in desc_lower:
+import google.generativeai as genai
+
+# Valid categories for the hackathon finance dashboard
+VALID_CATEGORIES = ["Software/Hosting", "Food & Beverage", "Swag/Merch", "Travel", "Prizes", "Sponsorship", "Uncategorized"]
+
+# Rule-based fallback categorizer (used when no Gemini API key is set)
+def _rule_based_categorize(description: str) -> str:
+    desc = description.lower()
+    if any(k in desc for k in ['aws', 'github', 'vercel', 'azure', 'gcp', 'stripe', 'digitalocean']):
         return 'Software/Hosting'
-    elif 'pizza' in desc_lower or 'catering' in desc_lower or 'restaurant' in desc_lower:
+    elif any(k in desc for k in ['pizza', 'catering', 'restaurant', 'domino', 'zomato', 'swiggy', 'costco', 'food']):
         return 'Food & Beverage'
-    elif 't-shirt' in desc_lower or 'swag' in desc_lower or 'stickers' in desc_lower:
+    elif any(k in desc for k in ['t-shirt', 'swag', 'sticker', 'customink', 'merch', 'printful']):
         return 'Swag/Merch'
-    elif 'hotel' in desc_lower or 'flight' in desc_lower or 'uber' in desc_lower:
+    elif any(k in desc for k in ['hotel', 'flight', 'uber', 'ola', 'airbnb', 'rapido', 'makemytrip']):
         return 'Travel'
-    elif 'prize' in desc_lower or 'award' in desc_lower:
+    elif any(k in desc for k in ['prize', 'award', 'reward', 'bounty']):
         return 'Prizes'
+    elif any(k in desc for k in ['sponsor', 'google', 'microsoft', 'amazon', 'meta']):
+        return 'Sponsorship'
     else:
         return 'Uncategorized'
+
+# Smart AI-powered categorizer
+def categorize_expense(description: str) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    # If no API key is configured, use the rule-based fallback directly
+    if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
+        return _rule_based_categorize(description)
+    
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        prompt = f"""You are a finance AI for a hackathon event. Your job is to categorize bank transactions.
+
+Given this bank transaction description: "{description}"
+
+Classify it into EXACTLY one of these categories:
+- Software/Hosting
+- Food & Beverage
+- Swag/Merch
+- Travel
+- Prizes
+- Sponsorship
+- Uncategorized
+
+Reply with ONLY the category name, nothing else. No explanation."""
+
+        response = model.generate_content(prompt)
+        category = response.text.strip()
+        
+        # Validate the response is one of our expected categories
+        if category in VALID_CATEGORIES:
+            return category
+        else:
+            # If Gemini returned something unexpected, fallback to rules
+            return _rule_based_categorize(description)
+
+    except Exception:
+        # If the API call fails for any reason, silently fallback to rules
+        return _rule_based_categorize(description)
 
 @router.get("/")
 def test_finance():
