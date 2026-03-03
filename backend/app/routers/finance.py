@@ -99,48 +99,69 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
         except UnicodeDecodeError:
             df = pd.read_csv(BytesIO(contents), encoding='utf-16')
         
-        # Basic validation to ensure required columns exist
-        # We lowercase everything to make it more flexible
-        columns_lower = [col.lower().strip() for col in df.columns]
-        
-        # Attempt to map columns (very basic mapping)
+        # Clean up column names (strip whitespace)
+        df.columns = [col.strip() for col in df.columns]
+
+        # --- Smart Column Detection ---
+        # Find date column (SBI: "Txn Date", generic: "Date")
         date_col = next((c for c in df.columns if 'date' in c.lower()), None)
-        desc_col = next((c for c in df.columns if 'desc' in c.lower() or 'narration' in c.lower()), None)
-        amt_col = next((c for c in df.columns if 'amount' in c.lower() or 'withdrawal' in c.lower()), None)
+        # Find description column (SBI: "Description", HDFC: "Narration")
+        desc_col = next((c for c in df.columns if any(k in c.lower() for k in ['desc', 'narration', 'particulars', 'remarks'])), None)
+        # SBI uses separate Debit/Credit columns
+        debit_col  = next((c for c in df.columns if 'debit' in c.lower() or 'withdrawal' in c.lower()), None)
+        credit_col = next((c for c in df.columns if 'credit' in c.lower() or 'deposit' in c.lower()), None)
+        # Generic/Chase format uses a single Amount column
+        amt_col    = next((c for c in df.columns if 'amount' in c.lower()), None)
 
-        if not all([date_col, desc_col, amt_col]):
-             raise HTTPException(
-                 status_code=400, 
-                 detail="Could not automatically map columns. Ensure CSV contains Date, Description, and Amount."
-             )
+        if not date_col or not desc_col:
+            raise HTTPException(
+                status_code=400, 
+                detail="Could not find Date or Description columns. Please check your CSV format."
+            )
+        
+        use_sbi_format = bool(debit_col and credit_col)
 
-        # Process the rows
+        # --- Row Processing ---
         processed_transactions = []
-        for index, row in df.iterrows():
-            # Skip empty rows
-            if pd.isna(row[desc_col]) or pd.isna(row[amt_col]):
-                 continue
-                 
-            description = str(row[desc_col])
-            # Handle string amounts like "$500.00" or "-500"
-            amount_raw = str(row[amt_col]).replace('$', '').replace(',', '')
-            try:
-                 amount = float(amount_raw)
-                 # If it's a positive number in a 'withdrawal' column, usually means expense.
-                 # Let's just pass the absolute value for our dashboard purposes.
-                 amount = abs(amount)
-            except ValueError:
-                 amount = 0.0
+        for _, row in df.iterrows():
+            if pd.isna(row[desc_col]):
+                continue
+
+            description = str(row[desc_col]).strip()
+
+            if use_sbi_format:
+                # SBI format: Debit = expense, Credit = income
+                debit  = float(str(row[debit_col]).replace(',', '').strip()) if not pd.isna(row[debit_col]) and str(row[debit_col]).strip() else 0.0
+                credit = float(str(row[credit_col]).replace(',', '').strip()) if not pd.isna(row[credit_col]) and str(row[credit_col]).strip() else 0.0
+
+                if debit > 0:
+                    amount = debit
+                    tx_type = "Expense"
+                elif credit > 0:
+                    amount = credit
+                    tx_type = "Income"
+                else:
+                    continue  # skip zero-amount rows
+            elif amt_col:
+                # Generic format: single Amount column
+                amount_raw = str(row[amt_col]).replace('₹', '').replace('$', '').replace(',', '').strip()
+                try:
+                    amount = abs(float(amount_raw))
+                except ValueError:
+                    continue
+                tx_type = "Expense"
+            else:
+                raise HTTPException(status_code=400, detail="Could not find amount columns (Debit/Credit or Amount).")
 
             category = categorize_expense(description)
 
             processed_transactions.append({
-                "date": str(row[date_col]),
+                "date":        str(row[date_col]).strip(),
                 "description": description,
-                "amount": amount,
-                "category": category,
-                "status": "Paid", # Default from bank
-                "method": "Bank Transfer"
+                "amount":      round(amount, 2),
+                "category":    category,
+                "status":      "Paid",
+                "method":      "Bank Transfer"
             })
 
         return {
@@ -148,6 +169,8 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
             "data": processed_transactions
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error parsing CSV: {str(e)}")
 
