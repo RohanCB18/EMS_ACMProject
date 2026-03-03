@@ -21,8 +21,7 @@ import {
     Lock, UserPlus, ClipboardCopy
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+import { fetchApi, ApiError } from '@/lib/api';
 
 interface MemberDetail {
     uid: string;
@@ -77,12 +76,10 @@ export default function TeamFormationPage() {
     const loadOpenTeams = useCallback(async () => {
         setLoadingTeams(true);
         try {
-            const res = await fetch(`${API_URL}/api/teams/browse/open`);
-            if (res.ok) {
-                const data = await res.json();
-                setOpenTeams(data.teams || []);
-            }
-        } catch {
+            const data = await fetchApi('/api/teams/browse/open');
+            setOpenTeams(data.teams || []);
+        } catch (err) {
+            console.error('Failed to load open teams:', err);
             // Silent fail — just show empty list
         } finally {
             setLoadingTeams(false);
@@ -96,15 +93,13 @@ export default function TeamFormationPage() {
         }
         setLoadingMyTeam(true);
         try {
-            const res = await fetch(`${API_URL}/api/teams/my-team/${user.uid}`);
-            if (res.ok) {
-                const data = await res.json();
-                setMyTeam(data.team || null);
-                if (data.team) {
-                    setActiveTab('my-team');
-                }
+            const data = await fetchApi(`/api/teams/my-team/${user.uid}`);
+            setMyTeam(data.team || null);
+            if (data.team) {
+                setActiveTab('my-team');
             }
-        } catch {
+        } catch (err) {
+            console.error('Failed to load my team:', err);
             // Silent fail
         } finally {
             setLoadingMyTeam(false);
@@ -122,9 +117,8 @@ export default function TeamFormationPage() {
         setError(null);
 
         try {
-            const res = await fetch(`${API_URL}/api/teams/create`, {
+            const data = await fetchApi('/api/teams/create', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: createName,
                     track: createTrack,
@@ -136,23 +130,21 @@ export default function TeamFormationPage() {
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setMyTeam(data);
-                setCreateDialogOpen(false);
-                setActiveTab('my-team');
-                await refreshProfile();
-                loadOpenTeams();
-                // Reset form
-                setCreateName('');
-                setCreateLookingFor('');
-                setCreateDescription('');
+            setMyTeam(data);
+            setCreateDialogOpen(false);
+            setActiveTab('my-team');
+            await refreshProfile();
+            loadOpenTeams();
+            // Reset form
+            setCreateName('');
+            setCreateLookingFor('');
+            setCreateDescription('');
+        } catch (err) {
+            if (err instanceof ApiError) {
+                setError(err.data?.detail || err.message);
             } else {
-                const err = await res.json();
-                setError(err.detail || 'Failed to create team');
+                setError('Failed to connect to server');
             }
-        } catch {
-            setError('Failed to connect to server');
         } finally {
             setCreating(false);
         }
@@ -164,29 +156,26 @@ export default function TeamFormationPage() {
         setError(null);
 
         try {
-            const res = await fetch(`${API_URL}/api/teams/join`, {
+            const data = await fetchApi('/api/teams/join', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     uid: user.uid,
                     invite_code: joinCode.trim().toUpperCase(),
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setMyTeam(data);
-                setJoinDialogOpen(false);
-                setActiveTab('my-team');
-                await refreshProfile();
-                loadOpenTeams();
-                setJoinCode('');
+            setMyTeam(data);
+            setJoinDialogOpen(false);
+            setActiveTab('my-team');
+            await refreshProfile();
+            loadOpenTeams();
+            setJoinCode('');
+        } catch (err) {
+            if (err instanceof ApiError) {
+                setError(err.data?.detail || err.message);
             } else {
-                const err = await res.json();
-                setError(err.detail || 'Failed to join team');
+                setError('Failed to connect to server');
             }
-        } catch {
-            setError('Failed to connect to server');
         } finally {
             setJoining(null);
         }
@@ -198,27 +187,24 @@ export default function TeamFormationPage() {
         setError(null);
 
         try {
-            const res = await fetch(`${API_URL}/api/teams/join`, {
+            const data = await fetchApi('/api/teams/join', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     uid: user.uid,
                     invite_code: inviteCode,
                 }),
             });
 
-            if (res.ok) {
-                const data = await res.json();
-                setMyTeam(data);
-                setActiveTab('my-team');
-                await refreshProfile();
-                loadOpenTeams();
+            setMyTeam(data);
+            setActiveTab('my-team');
+            await refreshProfile();
+            loadOpenTeams();
+        } catch (err) {
+            if (err instanceof ApiError) {
+                setError(err.data?.detail || err.message);
             } else {
-                const err = await res.json();
-                setError(err.detail || 'Failed to join team');
+                setError('Failed to connect to server');
             }
-        } catch {
-            setError('Failed to connect to server');
         } finally {
             setJoining(null);
         }
@@ -229,26 +215,24 @@ export default function TeamFormationPage() {
         setLeaving(true);
 
         try {
-            const res = await fetch(`${API_URL}/api/teams/leave`, {
+            await fetchApi('/api/teams/leave', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     uid: user.uid,
                     team_id: myTeam.team_id,
                 }),
             });
 
-            if (res.ok) {
-                setMyTeam(null);
-                setActiveTab('browse');
-                await refreshProfile();
-                loadOpenTeams();
+            setMyTeam(null);
+            setActiveTab('browse');
+            await refreshProfile();
+            loadOpenTeams();
+        } catch (err) {
+            if (err instanceof ApiError) {
+                setError(err.data?.detail || err.message);
             } else {
-                const err = await res.json();
-                setError(err.detail || 'Failed to leave team');
+                setError('Failed to connect to server');
             }
-        } catch {
-            setError('Failed to connect to server');
         } finally {
             setLeaving(false);
         }

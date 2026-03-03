@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Code, Loader2 } from 'lucide-react';
 import { signInWithEmail, signInWithGoogle, signInWithGitHub, verifyTokenWithBackend } from '@/lib/firebase';
+import { fetchApi } from '@/lib/api';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -66,13 +67,8 @@ export default function LoginPage() {
 
             if (!result.profile) {
                 // First-time OAuth login — create profile via backend
-                const token = await user.getIdToken();
-                await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'}/api/auth/create-profile`, {
+                await fetchApi('/api/auth/create-profile', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
                     body: JSON.stringify({
                         uid: user.uid,
                         email: user.email,

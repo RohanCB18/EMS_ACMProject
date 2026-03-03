@@ -18,6 +18,7 @@ import {
     type User,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { fetchApi } from "./api";
 
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -92,13 +93,8 @@ async function getIdToken(): Promise<string | null> {
  * Create user profile in backend Firestore via API.
  */
 async function createUserProfile(user: User, displayName: string, institution?: string) {
-    const token = await user.getIdToken();
-    const response = await fetch(`${API_URL}/api/auth/create-profile`, {
+    return fetchApi("/api/auth/create-profile", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-        },
         body: JSON.stringify({
             uid: user.uid,
             email: user.email,
@@ -107,31 +103,15 @@ async function createUserProfile(user: User, displayName: string, institution?: 
             institution: institution || null,
         }),
     });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Failed to create profile");
-    }
-
-    return response.json();
 }
 
 /**
  * Verify token with backend and get user profile.
  */
 async function verifyTokenWithBackend(user: User) {
-    const token = await user.getIdToken();
-    const response = await fetch(`${API_URL}/api/auth/verify-token`, {
+    return fetchApi("/api/auth/verify-token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_token: token }),
     });
-
-    if (!response.ok) {
-        throw new Error("Token verification failed");
-    }
-
-    return response.json();
 }
 
 export {
