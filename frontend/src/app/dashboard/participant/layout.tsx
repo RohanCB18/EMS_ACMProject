@@ -1,4 +1,5 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { RouteGuard } from '@/components/RouteGuard';
 
 export default function ParticipantLayout({
     children,
@@ -6,8 +7,10 @@ export default function ParticipantLayout({
     children: React.ReactNode;
 }) {
     return (
-        <DashboardLayout role="participant">
-            {children}
-        </DashboardLayout>
+        <RouteGuard allowedRoles={['participant']}>
+            <DashboardLayout role="participant">
+                {children}
+            </DashboardLayout>
+        </RouteGuard>
     );
 }
