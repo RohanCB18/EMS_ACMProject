@@ -93,35 +93,32 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
         # Read the uploaded file into memory
         contents = await file.read()
         
-        # Parse CSV using pandas, trying utf-8 first, then utf-16
+        # Parse CSV, trying utf-8 first (utf-16 for Windows-exported SBI files)
         try:
             df = pd.read_csv(BytesIO(contents), encoding='utf-8')
         except UnicodeDecodeError:
             df = pd.read_csv(BytesIO(contents), encoding='utf-16')
         
-        # Clean up column names (strip whitespace)
+        # Normalize column names
         df.columns = [col.strip() for col in df.columns]
 
-        # --- Smart Column Detection ---
-        # Find date column (SBI: "Txn Date", generic: "Date")
-        date_col = next((c for c in df.columns if 'date' in c.lower()), None)
-        # Find description column (SBI: "Description", HDFC: "Narration")
-        desc_col = next((c for c in df.columns if any(k in c.lower() for k in ['desc', 'narration', 'particulars', 'remarks'])), None)
-        # SBI uses separate Debit/Credit columns
-        debit_col  = next((c for c in df.columns if 'debit' in c.lower() or 'withdrawal' in c.lower()), None)
-        credit_col = next((c for c in df.columns if 'credit' in c.lower() or 'deposit' in c.lower()), None)
-        # Generic/Chase format uses a single Amount column
-        amt_col    = next((c for c in df.columns if 'amount' in c.lower()), None)
+        # --- SBI Format Column Detection ---
+        # Expected SBI columns: Txn Date | Value Date | Description | Ref No./Cheque No. | Debit | Credit | Balance
+        date_col   = next((c for c in df.columns if 'date' in c.lower()), None)
+        desc_col   = next((c for c in df.columns if 'desc' in c.lower()), None)
+        debit_col  = next((c for c in df.columns if 'debit' in c.lower()), None)
+        credit_col = next((c for c in df.columns if 'credit' in c.lower()), None)
 
-        if not date_col or not desc_col:
+        # Validate SBI format strictly
+        missing = [name for name, col in [("Txn Date", date_col), ("Description", desc_col), ("Debit", debit_col), ("Credit", credit_col)] if not col]
+        if missing:
             raise HTTPException(
-                status_code=400, 
-                detail="Could not find Date or Description columns. Please check your CSV format."
+                status_code=400,
+                detail=f"Invalid format. This system only accepts SBI bank statement CSVs. Missing columns: {', '.join(missing)}. "
+                       f"Please download your statement from SBI NetBanking as CSV and try again."
             )
-        
-        use_sbi_format = bool(debit_col and credit_col)
 
-        # --- Row Processing ---
+        # --- Row Processing (SBI: Debit = expense, Credit = income/sponsorship) ---
         processed_transactions = []
         for _, row in df.iterrows():
             if pd.isna(row[desc_col]):
@@ -129,29 +126,15 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
 
             description = str(row[desc_col]).strip()
 
-            if use_sbi_format:
-                # SBI format: Debit = expense, Credit = income
-                debit  = float(str(row[debit_col]).replace(',', '').strip()) if not pd.isna(row[debit_col]) and str(row[debit_col]).strip() else 0.0
-                credit = float(str(row[credit_col]).replace(',', '').strip()) if not pd.isna(row[credit_col]) and str(row[credit_col]).strip() else 0.0
+            debit  = float(str(row[debit_col]).replace(',', '').strip())  if not pd.isna(row[debit_col])  and str(row[debit_col]).strip()  else 0.0
+            credit = float(str(row[credit_col]).replace(',', '').strip()) if not pd.isna(row[credit_col]) and str(row[credit_col]).strip() else 0.0
 
-                if debit > 0:
-                    amount = debit
-                    tx_type = "Expense"
-                elif credit > 0:
-                    amount = credit
-                    tx_type = "Income"
-                else:
-                    continue  # skip zero-amount rows
-            elif amt_col:
-                # Generic format: single Amount column
-                amount_raw = str(row[amt_col]).replace('₹', '').replace('$', '').replace(',', '').strip()
-                try:
-                    amount = abs(float(amount_raw))
-                except ValueError:
-                    continue
-                tx_type = "Expense"
+            if debit > 0:
+                amount = debit
+            elif credit > 0:
+                amount = credit
             else:
-                raise HTTPException(status_code=400, detail="Could not find amount columns (Debit/Credit or Amount).")
+                continue  # skip zero-amount rows
 
             category = categorize_expense(description)
 

@@ -101,7 +101,7 @@ export default function FinanceDashboard() {
                 formData.append('file', fileToUpload);
             } else {
                 // Fallback to mock file if they just press the header button directly
-                const csvContent = "Date,Description,Amount\n2023-10-01,AWS Hosting,-150.00\n2023-10-02,Pizza Party,-300.50";
+                const csvContent = "Txn Date,Value Date,Description,Ref No./Cheque No.,Debit,Credit,Balance\n15/03/2026,15/03/2026,NEFT-AWS EC2 INSTANCE CHARGE,REF123,12500.00,,50000.00\n16/03/2026,16/03/2026,UPI-DOMINOS PIZZA,REF124,4500.50,,45499.50";
                 const blob = new Blob([csvContent], { type: 'text/csv' });
                 formData.append('file', blob, 'mock_statement.csv');
             }
