@@ -1,6 +1,6 @@
 # Hackathon EMS — Team Work Division
 
-> **Rohan** is the **Finance & Automation Engineer** and has already claimed his scope.
+> **Rohan** has started working on the **Finance & Automation part** and has already claimed his scope.
 > The remaining features from the master plan are divided below into **4 equal sets**.
 > Each teammate picks **one set**, creates `backend/<yourname>/` and `frontend` pages as needed, and we integrate at the end.
 
