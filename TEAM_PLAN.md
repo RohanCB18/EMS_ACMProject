@@ -7,9 +7,9 @@
 ---
 
 ## 🟦 SET A — Registration, Authentication & Database
-**Owner:** _______________________
 
-> Core of the platform. Everything else depends on this working first — pick this if you want to build foundational infrastructure.
+
+> Core of the platform. Everything else depends on this working first.
 
 ### 🔐 Authentication & Identity
 - Email / OTP login system
@@ -40,9 +40,9 @@
 ---
 
 ## 🟩 SET B — Participant Dashboard & Event Flow Control
-**Owner:** _______________________
 
-> Everything the participant sees and interacts with during the event. Pick this if you enjoy building rich UIs and user workflows.
+
+> Everything the participant sees and interacts with during the event.
 
 ### 📌 Personal Participant Dashboard
 - Registration status card
@@ -72,9 +72,9 @@
 ---
 
 ## 🟨 SET C — Judging System
-**Owner:** _______________________
 
-> The highest-impact backend module. Pick this if you enjoy complex algorithms, scoring logic, and real-time data aggregation.
+
+> The highest-impact backend module.
 
 ### 🧑‍⚖️ Judge Onboarding
 - Admin panel to invite judges via email (uses Rohan's email API)
@@ -103,9 +103,9 @@
 ---
 
 ## 🟥 SET D — On-Ground Ops, Sponsors & Admin Control
-**Owner:** _______________________
 
-> Everything that runs on the day of the event plus admin superpowers. Pick this if you want to build operational tooling and dashboards.
+
+> Everything that runs on the day of the event plus admin superpowers. 
 
 ### 🏷 QR Check-In System
 - Digital QR badge generation per participant upon registration
