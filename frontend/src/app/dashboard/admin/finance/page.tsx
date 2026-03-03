@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,9 +44,19 @@ const initialMockTransactions: { id: string; date: string; description: string; 
 export default function FinanceDashboard() {
     const [activeTab, setActiveTab] = useState('overview');
     const [isSyncing, setIsSyncing] = useState(false);
-    const [transactions, setTransactions] = useState(initialMockTransactions);
 
-    // Derived chart data — auto-updates whenever transactions change
+    // Load transactions from localStorage on first mount (survives refresh)
+    const [transactions, setTransactions] = useState<{ id: string; date: string; description: string; category: string; amount: number; status: string; method: string }[]>(() => {
+        try {
+            const saved = localStorage.getItem('finance_transactions');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+
+    // Persist transactions to localStorage whenever they update
+    useEffect(() => {
+        localStorage.setItem('finance_transactions', JSON.stringify(transactions));
+    }, [transactions]);
     const expenseData = useMemo(() => {
         const totals: Record<string, number> = {};
         transactions.forEach(tx => {
@@ -148,7 +158,7 @@ export default function FinanceDashboard() {
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">$25,000.00</div>
+                        <div className="text-2xl font-bold">₹1,00,000.00</div>
                         <p className="text-xs text-muted-foreground">From 4 Sponsors</p>
                     </CardContent>
                 </Card>
@@ -158,8 +168,8 @@ export default function FinanceDashboard() {
                         <ArrowDownRight className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${totalSpent.toFixed(2)}</div>
-                        <p className="text-xs text-muted-foreground">{((totalSpent / 25000) * 100).toFixed(1)}% of total budget</p>
+                        <div className="text-2xl font-bold">₹{totalSpent.toFixed(2)}</div>
+                        <p className="text-xs text-muted-foreground">{((totalSpent / 100000) * 100).toFixed(1)}% of total budget</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -169,7 +179,7 @@ export default function FinanceDashboard() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{pendingCount}</div>
-                        <p className="text-xs text-muted-foreground">Totalling ${pendingTotal.toFixed(2)}</p>
+                        <p className="text-xs text-muted-foreground">Totalling ₹{pendingTotal.toFixed(2)}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -178,7 +188,7 @@ export default function FinanceDashboard() {
                         <Landmark className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${(25000 - totalSpent).toFixed(2)}</div>
+                        <div className="text-2xl font-bold">₹{(100000 - totalSpent).toFixed(2)}</div>
                         <p className="text-xs text-muted-foreground">Safe to spend</p>
                     </CardContent>
                 </Card>
@@ -203,7 +213,7 @@ export default function FinanceDashboard() {
                                     <BarChart data={monthlySpend}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.2} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                                        <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `$${value}`} />
+                                        <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `₹${value}`} />
                                         <RechartsTooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px' }} />
                                         <Bar dataKey="spend" fill="#8884d8" radius={[4, 4, 0, 0]} />
                                     </BarChart>
@@ -232,7 +242,7 @@ export default function FinanceDashboard() {
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
-                                        <RechartsTooltip formatter={(value) => `$${value}`} />
+                                        <RechartsTooltip formatter={(value) => `₹${value}`} />
                                     </PieChart>
                                 </ResponsiveContainer>
                                 <div className="flex flex-wrap gap-2 justify-center mt-2">
