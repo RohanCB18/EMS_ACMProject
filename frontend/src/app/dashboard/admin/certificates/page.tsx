@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileBadge, Send, CopyCheck, FileKey2, FileDown, Layers, History, MailCheck, ShieldAlert } from 'lucide-react';
+import { FileBadge, Send, CopyCheck, FileKey2, FileDown, Layers, History, MailCheck, ShieldAlert, Plus, Trash2, X } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -28,42 +28,90 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from "sonner"
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface Recipient {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    track: string;
+    project_name: string;
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
+
 export default function AutomationDashboard() {
     const [activeTab, setActiveTab] = useState('certificates');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [sendWithCert, setSendWithCert] = useState(false);
+
+    // Email blast state
     const [emailSubject, setEmailSubject] = useState("");
     const [emailBody, setEmailBody] = useState("");
+    const [emailTo, setEmailTo] = useState("");
 
-    const handleGenerate = async () => {
+    // Certificate recipient list
+    const [recipients, setRecipients] = useState<Recipient[]>([
+        { id: '1', name: '', email: '', role: 'Participant', track: 'General', project_name: '' }
+    ]);
+
+    // Single / preview cert form
+    const [previewName, setPreviewName] = useState('');
+    const [previewRole, setPreviewRole] = useState('Participant');
+    const [previewTrack, setPreviewTrack] = useState('General');
+    const [previewProject, setPreviewProject] = useState('');
+
+    // ── Recipient helpers ────────────────────────────────────────────────────
+
+    const addRecipient = () => {
+        setRecipients(prev => [
+            ...prev,
+            { id: Date.now().toString(), name: '', email: '', role: 'Participant', track: 'General', project_name: '' }
+        ]);
+    };
+
+    const removeRecipient = (id: string) => {
+        setRecipients(prev => prev.filter(r => r.id !== id));
+    };
+
+    const updateRecipient = (id: string, field: keyof Recipient, value: string) => {
+        setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    };
+
+    // ── Preview / Single PDF download ────────────────────────────────────────
+
+    const handlePreview = async () => {
+        if (!previewName.trim()) {
+            toast.error("Please enter a name to preview the certificate");
+            return;
+        }
         setIsGenerating(true);
         try {
             const response = await fetch("http://localhost:8001/api/automation/certificates/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    name: "Rohan",
-                    role: "Winner",
-                    track: "General",
-                    project_name: "Antigravity EMS"
+                    name: previewName.trim(),
+                    role: previewRole,
+                    track: previewTrack,
+                    project_name: previewProject.trim(),
                 })
             });
 
-            if (!response.ok) throw new Error("Failed to trigger generation");
+            if (!response.ok) throw new Error("Failed to generate certificate");
 
-            // Handle the PDF file download from the backend
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = `Rohan_Certificate.pdf`;
+            a.download = `${previewName.replace(/ /g, '_')}_Certificate.pdf`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
-
-            toast.success("Certificate generated and downloaded!");
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); // Close modal
+            toast.success(`Certificate for ${previewName} downloaded!`);
         } catch (error) {
             toast.error("Error connecting to backend API");
             console.error(error);
@@ -72,9 +120,63 @@ export default function AutomationDashboard() {
         }
     };
 
-    const handleEmailSend = async () => {
-        if (!emailSubject || !emailBody) {
-            toast.error("Please fill out the subject and body");
+    // ── Bulk generate & email ────────────────────────────────────────────────
+
+    const handleBulkGenerate = async () => {
+        const validRecipients = recipients.filter(r => r.name.trim() && r.email.trim());
+        if (validRecipients.length === 0) {
+            toast.error("Add at least one recipient with name and email");
+            return;
+        }
+
+        setIsGenerating(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const recipient of validRecipients) {
+            try {
+                const response = await fetch("http://localhost:8001/api/automation/email/blast", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        to_emails: [recipient.email],
+                        subject: `🏆 Your HackOdyssey 2026 Certificate — ${recipient.role}`,
+                        body: `<h2>Congratulations, ${recipient.name}!</h2>
+                               <p>Your certificate for participating as a <strong>${recipient.role}</strong> in the 
+                               <strong>${recipient.track}</strong> track at HackOdyssey 2026 is attached.</p>
+                               ${recipient.project_name ? `<p>Project: <em>${recipient.project_name}</em></p>` : ''}
+                               <p>Thank you for being part of this amazing journey!</p>
+                               <p>— Team HackOdyssey</p>`,
+                        include_certificate_for: recipient.name,
+                    })
+                });
+
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            } catch {
+                failCount++;
+            }
+        }
+
+        setIsGenerating(false);
+        if (successCount > 0) toast.success(`Certificates sent to ${successCount} recipient(s)!`);
+        if (failCount > 0) toast.error(`Failed to send to ${failCount} recipient(s)`);
+    };
+
+    // ── Email blast ──────────────────────────────────────────────────────────
+
+    const handleEmailBlast = async () => {
+        if (!emailSubject.trim() || !emailBody.trim() || !emailTo.trim()) {
+            toast.error("Please fill in all fields including recipient emails");
+            return;
+        }
+
+        const toEmails = emailTo.split(',').map(e => e.trim()).filter(Boolean);
+        if (toEmails.length === 0) {
+            toast.error("Enter at least one valid email address");
             return;
         }
 
@@ -84,15 +186,19 @@ export default function AutomationDashboard() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    to_emails: ["rohan@example.com"],
-                    subject: emailSubject,
-                    body: emailBody,
-                    include_certificate_for: "Rohan"
+                    to_emails: toEmails,
+                    subject: emailSubject.trim(),
+                    body: emailBody.trim(),
+                    include_certificate_for: sendWithCert ? "Participant" : null,
                 })
             });
 
-            if (!response.ok) throw new Error("Failed to send email blast");
-            toast.success("Emails have been queued for sending!");
+            if (!response.ok) throw new Error("Failed to send");
+            const data = await response.json();
+            toast.success(data.message || `Email queued to ${toEmails.length} recipient(s)!`);
+            setEmailSubject("");
+            setEmailBody("");
+            setEmailTo("");
         } catch (error) {
             toast.error("Error connecting to backend email API");
             console.error(error);
@@ -100,6 +206,8 @@ export default function AutomationDashboard() {
             setIsSending(false);
         }
     };
+
+    // ── Render ───────────────────────────────────────────────────────────────
 
     return (
         <div className="space-y-6">
@@ -113,6 +221,7 @@ export default function AutomationDashboard() {
                 </div>
             </div>
 
+            {/* Summary Cards */}
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -153,159 +262,178 @@ export default function AutomationDashboard() {
                     <TabsTrigger value="feedback">Feedback Loops</TabsTrigger>
                 </TabsList>
 
+                {/* ── Certificate Engine Tab ─────────────────────────────── */}
                 <TabsContent value="certificates" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
+
+                        {/* Preview / Single certificate */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" /> Bulk Generation settings</CardTitle>
-                                <CardDescription>Configure the dynamic data to overlay onto your HTML/PDF templates.</CardDescription>
+                                <CardTitle className="flex items-center gap-2"><FileDown className="h-5 w-5" /> Preview Certificate</CardTitle>
+                                <CardDescription>Generate and download a single PDF to preview the design.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label>Target Audience</Label>
-                                    <Select defaultValue="all-participants">
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select target role" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all-participants">All Verified Participants (492)</SelectItem>
-                                            <SelectItem value="winners">Winners & Runners-up (16)</SelectItem>
-                                            <SelectItem value="mentors">Mentors & Judges (34)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <Label>Recipient Name</Label>
+                                    <Input placeholder="e.g. Rohan" value={previewName} onChange={e => setPreviewName(e.target.value)} />
                                 </div>
-
-                                <div className="space-y-2">
-                                    <Label>Template Selection</Label>
-                                    <Select defaultValue="modern">
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select template" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="modern">Modern Dark (Default)</SelectItem>
-                                            <SelectItem value="minimal">Minimal Light</SelectItem>
-                                            <SelectItem value="sponsor">Sponsor Branded</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="flex items-center justify-between rounded-lg border p-4">
-                                    <div className="space-y-0.5">
-                                        <Label className="text-base">Include QR Verification</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            Embeds a unique cryptographic link to verify authenticity.
-                                        </p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <Label>Role</Label>
+                                        <Select value={previewRole} onValueChange={setPreviewRole}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Participant">Participant</SelectItem>
+                                                <SelectItem value="Winner">Winner</SelectItem>
+                                                <SelectItem value="Runner Up">Runner Up</SelectItem>
+                                                <SelectItem value="Mentor">Mentor</SelectItem>
+                                                <SelectItem value="Judge">Judge</SelectItem>
+                                                <SelectItem value="Volunteer">Volunteer</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                    <Switch defaultChecked />
+                                    <div className="space-y-2">
+                                        <Label>Track</Label>
+                                        <Select value={previewTrack} onValueChange={setPreviewTrack}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="General">General</SelectItem>
+                                                <SelectItem value="AI/ML">AI/ML</SelectItem>
+                                                <SelectItem value="Web3">Web3</SelectItem>
+                                                <SelectItem value="HealthTech">HealthTech</SelectItem>
+                                                <SelectItem value="FinTech">FinTech</SelectItem>
+                                                <SelectItem value="Open Innovation">Open Innovation</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Project Name <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                                    <Input placeholder="e.g. Antigravity EMS" value={previewProject} onChange={e => setPreviewProject(e.target.value)} />
                                 </div>
                             </CardContent>
-                            <CardFooter className="flex justify-between border-t p-4">
-                                <Button variant="outline" className="w-1/2 mr-2"><FileDown className="mr-2 h-4 w-4" /> Preview 1 PDF</Button>
-
-                                <Dialog>
-                                    <DialogTrigger asChild>
-                                        <Button className="w-1/2 ml-2 bg-primary">Bulk Generate & Email</Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>Confirm Bulk Action</DialogTitle>
-                                            <DialogDescription>
-                                                This will trigger your Python backend to run HTML-to-PDF generation for 492 participants via the background job worker. It will automatically email them via SendGrid upon completion.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <DialogFooter>
-                                            <Button variant="outline" onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))}>Cancel</Button>
-                                            <Button onClick={handleGenerate} disabled={isGenerating}>
-                                                {isGenerating ? 'Generating...' : 'Confirm & Send'}
-                                            </Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
+                            <CardFooter className="border-t pt-4">
+                                <Button className="w-full" onClick={handlePreview} disabled={isGenerating}>
+                                    <FileDown className="mr-2 h-4 w-4" />
+                                    {isGenerating ? 'Generating...' : 'Download Preview PDF'}
+                                </Button>
                             </CardFooter>
                         </Card>
 
-                        <Card className="bg-muted/50 border-dashed">
+                        {/* Bulk recipient list */}
+                        <Card>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2"><FileKey2 className="h-5 w-5" /> Recent Generations</CardTitle>
-                                <CardDescription>Status of recent background jobs</CardDescription>
+                                <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Bulk Generate & Email</CardTitle>
+                                <CardDescription>Add recipients below. Each gets a personalized PDF certificate via email.</CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="flex items-center justify-between space-x-4 border-b pb-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="flex h-2 w-2 rounded-full bg-green-500"></span>
-                                        <div>
-                                            <p className="text-sm font-medium leading-none">Mentors Batch (34)</p>
-                                            <p className="text-sm text-muted-foreground">Completed 2 hours ago</p>
+                            <CardContent className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                                {recipients.map((r, idx) => (
+                                    <div key={r.id} className="border rounded-lg p-3 space-y-2 relative">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-muted-foreground font-medium">Recipient {idx + 1}</span>
+                                            {recipients.length > 1 && (
+                                                <button onClick={() => removeRecipient(r.id)} className="text-destructive hover:text-red-500">
+                                                    <X className="h-3.5 w-3.5" />
+                                                </button>
+                                            )}
                                         </div>
-                                    </div>
-                                    <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400">Success</Badge>
-                                </div>
-
-                                <div className="flex items-center justify-between space-x-4 border-b pb-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-                                        <div>
-                                            <p className="text-sm font-medium leading-none">Winners Batch (16)</p>
-                                            <p className="text-sm text-muted-foreground">Processing 12 / 16</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input placeholder="Full Name" value={r.name} onChange={e => updateRecipient(r.id, 'name', e.target.value)} />
+                                            <Input placeholder="Email" type="email" value={r.email} onChange={e => updateRecipient(r.id, 'email', e.target.value)} />
                                         </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Select value={r.role} onValueChange={v => updateRecipient(r.id, 'role', v)}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Participant">Participant</SelectItem>
+                                                    <SelectItem value="Winner">Winner</SelectItem>
+                                                    <SelectItem value="Runner Up">Runner Up</SelectItem>
+                                                    <SelectItem value="Mentor">Mentor</SelectItem>
+                                                    <SelectItem value="Judge">Judge</SelectItem>
+                                                    <SelectItem value="Volunteer">Volunteer</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Select value={r.track} onValueChange={v => updateRecipient(r.id, 'track', v)}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="General">General</SelectItem>
+                                                    <SelectItem value="AI/ML">AI/ML</SelectItem>
+                                                    <SelectItem value="Web3">Web3</SelectItem>
+                                                    <SelectItem value="HealthTech">HealthTech</SelectItem>
+                                                    <SelectItem value="FinTech">FinTech</SelectItem>
+                                                    <SelectItem value="Open Innovation">Open Innovation</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <Input placeholder="Project Name (optional)" className="text-xs h-8" value={r.project_name} onChange={e => updateRecipient(r.id, 'project_name', e.target.value)} />
                                     </div>
-                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400">In Progress</Badge>
-                                </div>
+                                ))}
+                                <Button variant="outline" size="sm" className="w-full" onClick={addRecipient}>
+                                    <Plus className="mr-2 h-3.5 w-3.5" /> Add Recipient
+                                </Button>
                             </CardContent>
+                            <CardFooter className="border-t pt-4">
+                                <Button className="w-full bg-primary" onClick={handleBulkGenerate} disabled={isGenerating}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    {isGenerating ? 'Sending...' : `Generate & Email ${recipients.filter(r => r.name && r.email).length} Certificate(s)`}
+                                </Button>
+                            </CardFooter>
                         </Card>
                     </div>
                 </TabsContent>
 
+                {/* ── Email Blaster Tab ──────────────────────────────────── */}
                 <TabsContent value="communications" className="space-y-4">
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2"><MailCheck className="h-5 w-5" /> Target Email Blaster</CardTitle>
-                            <CardDescription>Send targeted updates via your SMTP integration.</CardDescription>
+                            <CardDescription>Send targeted updates via SMTP. Separate multiple emails with a comma.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Send To (Filtering)</Label>
-                                <Select defaultValue="ai-track">
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select recipients" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Registered Users</SelectItem>
-                                        <SelectItem value="ai-track">Only 'AI/ML Track' Participants</SelectItem>
-                                        <SelectItem value="unsubmitted">Teams marked 'Unsubmitted'</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <Label>To (comma-separated emails)</Label>
+                                <Input
+                                    placeholder="alice@example.com, bob@example.com"
+                                    value={emailTo}
+                                    onChange={e => setEmailTo(e.target.value)}
+                                />
                             </div>
-
-                            <div className="space-y-2 mt-4">
+                            <div className="space-y-2">
                                 <Label>Subject Line</Label>
                                 <Input
                                     placeholder="URGENT: Submission deadline extended by 2 hours!"
                                     value={emailSubject}
-                                    onChange={(e) => setEmailSubject(e.target.value)}
+                                    onChange={e => setEmailSubject(e.target.value)}
                                 />
                             </div>
-
-                            <div className="space-y-2 mt-4">
-                                <Label>Email Body (Markdown supported)</Label>
+                            <div className="space-y-2">
+                                <Label>Email Body (HTML supported)</Label>
                                 <Textarea
-                                    placeholder="Hello {{first_name}},\n\nWe have decided to extend the deadline..."
-                                    className="min-h-[200px]"
+                                    placeholder="Hello team,&#10;&#10;We wanted to let you know..."
+                                    className="min-h-[180px]"
                                     value={emailBody}
-                                    onChange={(e) => setEmailBody(e.target.value)}
+                                    onChange={e => setEmailBody(e.target.value)}
                                 />
-                                <p className="text-xs text-muted-foreground">Use {'{{parameter}}'} syntax to inject dynamic names/variables from the database.</p>
+                            </div>
+                            <div className="flex items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Attach Participation Certificate</Label>
+                                    <p className="text-sm text-muted-foreground">Auto-generate and attach a certificate PDF to this email.</p>
+                                </div>
+                                <Switch checked={sendWithCert} onCheckedChange={setSendWithCert} />
                             </div>
                         </CardContent>
-                        <CardFooter className="flex justify-end gap-2 border-t p-4">
+                        <CardFooter className="flex justify-end gap-2 border-t pt-4">
                             <Button variant="outline">Save Draft</Button>
-                            <Button onClick={handleEmailSend} disabled={isSending}>
-                                {isSending ? 'Dispatching...' : 'Blast Email to 134 Users'}
+                            <Button onClick={handleEmailBlast} disabled={isSending}>
+                                <Send className="mr-2 h-4 w-4" />
+                                {isSending ? 'Dispatching...' : 'Send Email Blast'}
                             </Button>
                         </CardFooter>
                     </Card>
                 </TabsContent>
 
+                {/* ── Feedback Loops Tab ────────────────────────────────── */}
                 <TabsContent value="feedback" className="space-y-4">
                     <Card className="border-amber-200/50 bg-amber-500/5">
                         <CardContent className="flex flex-col items-center justify-center py-20 text-center">
