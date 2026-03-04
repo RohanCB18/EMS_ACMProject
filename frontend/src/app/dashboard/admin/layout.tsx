@@ -1,4 +1,5 @@
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+import { RouteGuard } from '@/components/RouteGuard';
 
 export default function AdminLayout({
     children,
@@ -6,8 +7,10 @@ export default function AdminLayout({
     children: React.ReactNode;
 }) {
     return (
-        <DashboardLayout role="admin">
-            {children}
-        </DashboardLayout>
+        <RouteGuard allowedRoles={['admin', 'super_admin']}>
+            <DashboardLayout role="admin">
+                {children}
+            </DashboardLayout>
+        </RouteGuard>
     );
 }
