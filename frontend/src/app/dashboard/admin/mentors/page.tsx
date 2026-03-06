@@ -7,14 +7,33 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-const MOCK_MENTORS = [
-    { uid: "m1", name: "Alice Johnson", expertise: ["AI/ML", "Python"], availability: "Available", sessions: 5 },
-    { uid: "m2", name: "Bob Smith", expertise: ["React", "TypeScript", "Node.js"], availability: "Busy", sessions: 12 },
-    { uid: "m3", name: "Charlie Davis", expertise: ["Blockchain", "Solidity"], availability: "Available", sessions: 3 },
-    { uid: "m4", name: "Diana Prince", expertise: ["UX Design", "Figma"], availability: "Available", sessions: 8 },
-];
+import { setDApi, MentorProfile } from "@/lib/api/set-d";
+import { toast } from "sonner";
+import { useEffect } from "react";
 
 export default function MentorsPage() {
+    const [mentors, setMentors] = useState<MentorProfile[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchMentors = async () => {
+        try {
+            const data = await setDApi.listMentors();
+            setMentors(data);
+        } catch (error: any) {
+            toast.error(error.message || "Failed to fetch mentors");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchMentors();
+    }, []);
+
+    const totalSessions = mentors.reduce((acc, m) => acc + (m.availability?.filter(s => s.booked).length || 0), 0);
+
+    if (loading) return <div>Loading mentors...</div>;
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -28,7 +47,7 @@ export default function MentorsPage() {
                         <CardTitle className="text-sm font-medium">Total Mentors</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">24</div>
+                        <div className="text-2xl font-bold">{mentors.length}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -36,7 +55,7 @@ export default function MentorsPage() {
                         <CardTitle className="text-sm font-medium">Slots Booked</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">86</div>
+                        <div className="text-2xl font-bold">{totalSessions}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -68,40 +87,44 @@ export default function MentorsPage() {
                                 <TableHead>Mentor</TableHead>
                                 <TableHead>Expertise</TableHead>
                                 <TableHead>Status</TableHead>
-                                <TableHead>Total Sessions</TableHead>
+                                <TableHead>Sessions</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {MOCK_MENTORS.map((mentor) => (
+                            {mentors.map((mentor) => (
                                 <TableRow key={mentor.uid}>
                                     <TableCell className="font-medium">
                                         <div className="flex items-center gap-3">
                                             <Avatar className="h-8 w-8">
-                                                <AvatarFallback>{mentor.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                                <AvatarFallback>{mentor.display_name.substring(0, 2).toUpperCase()}</AvatarFallback>
                                             </Avatar>
-                                            {mentor.name}
+                                            {mentor.display_name}
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-wrap gap-1">
                                             {mentor.expertise.map(exp => (
-                                                <Badge key={exp} variant="secondary">{exp}</Badge>
+                                                <Badge key={exp} variant="secondary" className="text-[10px]">{exp}</Badge>
                                             ))}
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant={mentor.availability === "Available" ? "outline" : "outline"}>
-                                            {mentor.availability}
+                                        <Badge variant="outline">
+                                            {mentor.availability?.some(s => !s.booked) ? "Available" : "Full"}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{mentor.sessions}</TableCell>
+                                    <TableCell>{mentor.availability?.filter(s => s.booked).length || 0}</TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="sm">Manage Slots</Button>
-                                        <Button variant="ghost" size="sm">View History</Button>
                                     </TableCell>
                                 </TableRow>
                             ))}
+                            {mentors.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">No mentors found</TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
