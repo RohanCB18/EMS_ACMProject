@@ -7,21 +7,55 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, AlertCircle, Clock, CheckCircle2 } from "lucide-react";
 
-const MOCK_TICKETS = [
-    { id: "T1", title: "WiFi connection issues", user: "Team Rocket", priority: "High", status: "Open", category: "Technical" },
-    { id: "T2", title: "Request for extra extension cord", user: "Super Coders", priority: "Low", status: "In Progress", category: "Logistics" },
-    { id: "T3", title: "API key not working", user: "Dev Ops", priority: "Urgent", status: "Open", category: "Technical" },
-    { id: "T4", title: "Where is the canteen?", user: "Newbies", priority: "Medium", status: "Resolved", category: "Queries" },
-];
+import { setDApi, SupportTicket, TicketStatus, TicketPriority } from "@/lib/api/set-d";
+import { toast } from "sonner";
+import { useEffect } from "react";
 
 export default function HelpdeskPage() {
+    const [tickets, setTickets] = useState<SupportTicket[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchTickets = async () => {
+        try {
+            const data = await setDApi.listTickets();
+            setTickets(data);
+        } catch (error: any) {
+            toast.error(error.message || "Failed to fetch tickets");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchTickets();
+    }, []);
+
+    const handleUpdateStatus = async (ticketId: string, status: TicketStatus) => {
+        try {
+            await setDApi.updateTicket(ticketId, { status });
+            toast.success(`Ticket ${status} successfully`);
+            fetchTickets();
+        } catch (error: any) {
+            toast.error(error.message || "Failed to update ticket");
+        }
+    };
+
+    const stats = {
+        open: tickets.filter(t => t.status === "open").length,
+        urgent: tickets.filter(t => t.priority === "urgent").length,
+        inProgress: tickets.filter(t => t.status === "in_progress").length,
+        resolved: tickets.filter(t => t.status === "resolved").length,
+    };
+
+    if (loading) return <div>Loading tickets...</div>;
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold tracking-tight">Helpdesk Dashboard</h1>
                 <div className="flex gap-2">
-                    <Badge variant="outline" className="px-3 py-1 text-sm">Open: 12</Badge>
-                    <Badge variant="outline" className="px-3 py-1 text-sm">Urgent: 3</Badge>
+                    <Badge variant="outline" className="px-3 py-1 text-sm">Open: {stats.open}</Badge>
+                    <Badge variant="outline" className="px-3 py-1 text-sm">Urgent: {stats.urgent}</Badge>
                 </div>
             </div>
 
@@ -34,7 +68,7 @@ export default function HelpdeskPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 pt-0 text-center">
-                        <div className="text-3xl font-bold">03</div>
+                        <div className="text-3xl font-bold">{stats.urgent.toString().padStart(2, '0')}</div>
                         <p className="text-xs text-muted-foreground uppercase">Urgent Tickets</p>
                     </CardContent>
                 </Card>
@@ -46,7 +80,7 @@ export default function HelpdeskPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 pt-0 text-center">
-                        <div className="text-3xl font-bold">08</div>
+                        <div className="text-3xl font-bold">{stats.inProgress.toString().padStart(2, '0')}</div>
                         <p className="text-xs text-muted-foreground uppercase">Active Tasks</p>
                     </CardContent>
                 </Card>
@@ -58,7 +92,7 @@ export default function HelpdeskPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 pt-0 text-center">
-                        <div className="text-3xl font-bold">45</div>
+                        <div className="text-3xl font-bold">{stats.resolved.toString().padStart(2, '0')}</div>
                         <p className="text-xs text-muted-foreground uppercase">Total Resolved</p>
                     </CardContent>
                 </Card>
@@ -70,8 +104,8 @@ export default function HelpdeskPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 pt-0 text-center">
-                        <div className="text-3xl font-bold">56</div>
-                        <p className="text-xs text-muted-foreground uppercase">Avg. Response Time</p>
+                        <div className="text-3xl font-bold">{tickets.length}</div>
+                        <p className="text-xs text-muted-foreground uppercase">Total Tickets</p>
                     </CardContent>
                 </Card>
             </div>
@@ -93,30 +127,39 @@ export default function HelpdeskPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {MOCK_TICKETS.map((ticket) => (
-                                <TableRow key={ticket.id}>
-                                    <TableCell className="font-mono">{ticket.id}</TableCell>
+                            {tickets.map((ticket) => (
+                                <TableRow key={ticket.ticket_id}>
+                                    <TableCell className="font-mono text-xs">{ticket.ticket_id?.substring(0, 8)}</TableCell>
                                     <TableCell>
                                         <div className="font-medium">{ticket.title}</div>
                                         <div className="text-xs text-muted-foreground">{ticket.category}</div>
                                     </TableCell>
-                                    <TableCell>{ticket.user}</TableCell>
+                                    <TableCell className="text-xs">{ticket.raised_by_uid}</TableCell>
                                     <TableCell>
-                                        <Badge variant={ticket.priority === "Urgent" ? "destructive" : ticket.priority === "High" ? "secondary" : "outline"}>
+                                        <Badge variant={ticket.priority === "urgent" ? "destructive" : ticket.priority === "high" ? "secondary" : "outline"}>
                                             {ticket.priority}
                                         </Badge>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant={ticket.status === "Open" ? "default" : ticket.status === "In Progress" ? "secondary" : "outline"}>
+                                        <Badge variant={ticket.status === "open" ? "default" : ticket.status === "in_progress" ? "secondary" : "outline"}>
                                             {ticket.status}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm">Assign</Button>
-                                        <Button variant="ghost" size="sm">Resolve</Button>
+                                        {ticket.status === "open" && (
+                                            <Button variant="ghost" size="sm" onClick={() => handleUpdateStatus(ticket.ticket_id!, "in_progress")}>Assign</Button>
+                                        )}
+                                        {ticket.status !== "resolved" && (
+                                            <Button variant="ghost" size="sm" onClick={() => handleUpdateStatus(ticket.ticket_id!, "resolved")}>Resolve</Button>
+                                        )}
                                     </TableCell>
                                 </TableRow>
                             ))}
+                            {tickets.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-4 text-muted-foreground">No tickets found</TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
