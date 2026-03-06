@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+import uuid
 from ..models import Track, Sponsor, UserRole
 from ..middleware import role_required
 from ..firebase_config import get_firestore_client
@@ -29,6 +30,8 @@ async def add_sponsor(
 ):
     """Add a new sponsor."""
     db = get_firestore_client()
+    if not sponsor.sponsor_id:
+        sponsor.sponsor_id = str(uuid.uuid4())
     db.collection("sponsors").document(sponsor.sponsor_id).set(sponsor.dict())
     return sponsor
 

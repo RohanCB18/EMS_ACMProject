@@ -83,14 +83,17 @@ class Track(BaseModel):
     track_id: str
     name: str
     description: str
-    problem_statements: List[str]
+    problem_statements: List[str] = []
+    sponsor: Optional[str] = None  # Sponsor name for display
     sponsor_id: Optional[str] = None
     eligibility_rules: Optional[str] = None
+    enrolled_teams: int = 0
 
 class Sponsor(BaseModel):
-    sponsor_id: str
+    sponsor_id: Optional[str] = None
     name: str
     tier: str
+    industry: Optional[str] = None
     logo_url: Optional[str] = None
     website_url: Optional[str] = None
     metrics: Dict = {}  # engagement metrics
