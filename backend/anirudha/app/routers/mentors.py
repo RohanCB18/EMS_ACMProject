@@ -18,39 +18,51 @@ async def book_slot(
     request: SlotBookingRequest,
     current_user: dict = Depends(get_current_user)
 ):
-    """Book a mentor slot for a team."""
+    """Book a mentor slot for a team using a transaction."""
     db = get_firestore_client()
     mentor_ref = db.collection("mentors").document(request.mentor_uid)
-    mentor_doc = mentor_ref.get()
     
-    if not mentor_doc.exists:
-        raise HTTPException(status_code=404, detail="Mentor not found")
-    
-    mentor_data = mentor_doc.to_dict()
-    slots = mentor_data.get("availability", [])
-    
-    if request.slot_index >= len(slots):
-        raise HTTPException(status_code=400, detail="Invalid slot index")
-    
-    if slots[request.slot_index].get("booked"):
-        raise HTTPException(status_code=400, detail="Slot already booked")
-    
-    # Update slot
-    slots[request.slot_index]["booked"] = True
-    slots[request.slot_index]["booked_by_team_id"] = request.team_id
-    
-    mentor_ref.update({"availability": slots})
-    
-    # Record in session history
-    session_data = {
-        "mentor_uid": request.mentor_uid,
-        "team_id": request.team_id,
-        "slot": slots[request.slot_index],
-        "timestamp": datetime.utcnow().isoformat()
-    }
-    db.collection("mentor_sessions").add(session_data)
-    
-    return {"message": "Slot booked successfully"}
+    @db.transactional
+    def update_in_transaction(transaction, mentor_ref, request):
+        snapshot = mentor_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            raise HTTPException(status_code=404, detail="Mentor not found")
+        
+        mentor_data = snapshot.to_dict()
+        slots = mentor_data.get("availability", [])
+        
+        if request.slot_index >= len(slots):
+            raise HTTPException(status_code=400, detail="Invalid slot index")
+        
+        if slots[request.slot_index].get("booked"):
+            raise HTTPException(status_code=400, detail="Slot already booked")
+        
+        # Update slot
+        slots[request.slot_index]["booked"] = True
+        slots[request.slot_index]["booked_by_team_id"] = request.team_id
+        
+        transaction.update(mentor_ref, {"availability": slots})
+        
+        # Record in session history
+        session_ref = db.collection("mentor_sessions").document()
+        session_data = {
+            "mentor_uid": request.mentor_uid,
+            "team_id": request.team_id,
+            "slot": slots[request.slot_index],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        transaction.set(session_ref, session_data)
+        
+        return {"message": "Slot booked successfully"}
+
+    try:
+        transaction = db.transaction()
+        result = update_in_transaction(transaction, mentor_ref, request)
+        return result
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/profile")
 async def update_mentor_profile(

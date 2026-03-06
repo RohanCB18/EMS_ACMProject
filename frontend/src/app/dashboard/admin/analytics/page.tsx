@@ -3,8 +3,30 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart3, Users, Clock, Zap, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { setDApi, AnalyticsOverview } from "@/lib/api/set-d";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 export default function AnalyticsPage() {
+    const [stats, setStats] = useState<AnalyticsOverview | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const data = await setDApi.getOverview();
+                setStats(data);
+            } catch (error: any) {
+                toast.error("Failed to fetch analytics");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
+
+    if (loading) return <div className="p-8 text-center">Loading analytics...</div>;
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -21,7 +43,7 @@ export default function AnalyticsPage() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">1,284</div>
+                        <div className="text-2xl font-bold">{stats?.total_registrations}</div>
                         <p className="text-xs text-muted-foreground">+12% from last week</p>
                     </CardContent>
                 </Card>
@@ -31,27 +53,27 @@ export default function AnalyticsPage() {
                         <Zap className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">312</div>
+                        <div className="text-2xl font-bold">{stats?.teams_formed}</div>
                         <p className="text-xs text-muted-foreground">84% formation rate</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Avg. Wait Time</CardTitle>
+                        <CardTitle className="text-sm font-medium">Attendance Rate</CardTitle>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">14m</div>
-                        <p className="text-xs text-muted-foreground">-2m since yesterday</p>
+                        <div className="text-2xl font-bold">{stats?.attendance_rate.toFixed(1)}%</div>
+                        <p className="text-xs text-muted-foreground">Peak hours tracked</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Resource Usage</CardTitle>
+                        <CardTitle className="text-sm font-medium">Tickets Resolved</CardTitle>
                         <BarChart3 className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">72%</div>
+                        <div className="text-2xl font-bold">{stats?.tickets_resolved}</div>
                         <p className="text-xs text-muted-foreground">Optimal capacity</p>
                     </CardContent>
                 </Card>
@@ -81,19 +103,14 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {[
-                                { name: "AI/ML", value: "35%", color: "bg-blue-500" },
-                                { name: "Web3", value: "25%", color: "bg-purple-500" },
-                                { name: "Fintech", value: "20%", color: "bg-green-500" },
-                                { name: "Others", value: "20%", color: "bg-gray-500" },
-                            ].map(track => (
+                            {stats?.top_tracks.map((track, i) => (
                                 <div key={track.name}>
                                     <div className="flex justify-between text-sm mb-1">
                                         <span>{track.name}</span>
-                                        <span>{track.value}</span>
+                                        <span>{track.count} teams</span>
                                     </div>
                                     <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
-                                        <div className={`${track.color} h-full`} style={{ width: track.value }}></div>
+                                        <div className={`h-full ${i === 0 ? 'bg-blue-500' : i === 1 ? 'bg-purple-500' : 'bg-green-500'}`} style={{ width: `${(track.count / (stats?.teams_formed || 1)) * 100}%` }}></div>
                                     </div>
                                 </div>
                             ))}

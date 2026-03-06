@@ -50,7 +50,8 @@ async def update_ticket(
         raise HTTPException(status_code=404, detail="Ticket not found")
     
     update_data = update.dict(exclude_none=True)
-    update_data["updated_at"] = datetime.utcnow()
+    update_data["updated_at"] = datetime.utcnow().isoformat()
     
+    # Logic sanity: if resolved, ensure it stays resolved or moves back properly
     ticket_ref.update(update_data)
-    return {"message": "Ticket updated"}
+    return {"message": "Ticket updated", "ticket_id": ticket_id}

@@ -17,6 +17,19 @@ export default function CheckInPage() {
     const [showScanner, setShowScanner] = useState(false);
     const [stats, setStats] = useState({ total_present: 0, attendance_rate: 0, recent: [] as AttendanceRecord[] });
 
+    const playSuccessSound = () => {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.1);
+    };
+
     const fetchStats = async () => {
         try {
             const data = await setDApi.getAttendanceStats(phaseId);
@@ -40,6 +53,7 @@ export default function CheckInPage() {
         try {
             await setDApi.checkIn(code, phaseId);
             toast.success(`Checked in successfully!`);
+            playSuccessSound();
             setQrCode("");
             setShowScanner(false);
             fetchStats();
@@ -110,16 +124,15 @@ export default function CheckInPage() {
                                     </select>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">QR Data / UID</label>
+                                    <label className="text-sm font-medium">QR Data / UID (Manual Override)</label>
                                     <div className="flex gap-2">
                                         <Input
-                                            placeholder="Scan or type UID..."
+                                            placeholder="Enter UID for manual override..."
                                             value={qrCode}
                                             onChange={(e) => setQrCode(e.target.value)}
-                                            autoFocus
                                         />
-                                        <Button type="submit" disabled={loading}>
-                                            {loading ? "Checking..." : "Check In"}
+                                        <Button type="submit" variant="secondary" disabled={loading}>
+                                            Manual Check-In
                                         </Button>
                                     </div>
                                 </div>

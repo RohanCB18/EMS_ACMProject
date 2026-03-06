@@ -83,14 +83,17 @@ class Track(BaseModel):
     track_id: str
     name: str
     description: str
-    problem_statements: List[str]
+    problem_statements: List[str] = []
+    sponsor: Optional[str] = None  # Sponsor name for display
     sponsor_id: Optional[str] = None
     eligibility_rules: Optional[str] = None
+    enrolled_teams: int = 0
 
 class Sponsor(BaseModel):
-    sponsor_id: str
+    sponsor_id: Optional[str] = None
     name: str
     tier: str
+    industry: Optional[str] = None
     logo_url: Optional[str] = None
     website_url: Optional[str] = None
     metrics: Dict = {}  # engagement metrics
@@ -111,4 +114,6 @@ class AnalyticsOverview(BaseModel):
     teams_formed: int
     attendance_rate: float
     tickets_resolved: int
+    projects_submitted: int = 0
+    finance_reconciled: float = 0.0
     top_tracks: List[Dict]
