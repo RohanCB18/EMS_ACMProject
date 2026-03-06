@@ -62,7 +62,17 @@ export interface AnalyticsOverview {
     teams_formed: number;
     attendance_rate: number;
     tickets_resolved: number;
+    projects_submitted: number;
+    finance_reconciled: number;
     top_tracks: { name: string; count: number }[];
+}
+
+export interface Announcement {
+    id: string;
+    title: string;
+    body: string;
+    targetTrack: string;
+    timestamp: any;
 }
 
 // --- API Functions ---
@@ -144,4 +154,19 @@ export const setDApi = {
     // Analytics
     getOverview: () =>
         fetchApi<AnalyticsOverview>('/analytics/overview'),
+
+    // Announcements (Centralized)
+    listAnnouncements: () =>
+        fetchApi<Announcement[]>('/announcements'),
+
+    createAnnouncement: (ann: Partial<Announcement>) =>
+        fetchApi<Announcement>('/announcements', {
+            method: 'POST',
+            body: JSON.stringify(ann),
+        }),
+
+    deleteAnnouncement: (id: string) =>
+        fetchApi<{ message: string }>(`/announcements/${id}`, {
+            method: 'DELETE',
+        }),
 };

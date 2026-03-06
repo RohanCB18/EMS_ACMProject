@@ -114,4 +114,6 @@ class AnalyticsOverview(BaseModel):
     teams_formed: int
     attendance_rate: float
     tickets_resolved: int
+    projects_submitted: int = 0
+    finance_reconciled: float = 0.0
     top_tracks: List[Dict]

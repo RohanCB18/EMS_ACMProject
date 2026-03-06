@@ -13,7 +13,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db, API_URL } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { setDApi, Announcement } from '@/lib/api/set-d';
 import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,14 +44,6 @@ import { toast } from 'sonner';
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
-
-interface Announcement {
-    id: string;
-    title: string;
-    body: string;
-    targetTrack: string;
-    timestamp: { seconds: number; nanoseconds: number } | null;
-}
 
 const TRACKS = ['all', 'AI', 'Web', 'Blockchain', 'Open Innovation'] as const;
 
@@ -94,27 +87,18 @@ function CreateAnnouncementDialog({
         }
         setLoading(true);
         try {
-            const token = user ? await user.getIdToken() : '';
-            const backendUrl = API_URL.replace('8002', '8004');
-            const res = await fetch(`${backendUrl}/announcements/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ title: title.trim(), body: body.trim(), targetTrack: track }),
+            await setDApi.createAnnouncement({
+                title: title.trim(),
+                body: body.trim(),
+                targetTrack: track
             });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail ?? 'Failed to create announcement');
-            }
             toast.success('Announcement published!');
             setTitle('');
             setBody('');
             setTrack('all');
             setOpen(false);
             onCreated();
-        } catch (e: unknown) {
+        } catch (e: any) {
             const msg = e instanceof Error ? e.message : 'Unknown error';
             toast.error(`Error: ${msg}`);
         } finally {
@@ -257,7 +241,7 @@ export default function AdminAnnouncementsPage() {
 
     // Auth guard
     useEffect(() => {
-        if (!authLoading && profile?.role !== 'admin' && profile?.role !== 'super_admin') {
+        if (!authLoading && profile?.role !== 'organizer' && profile?.role !== 'super_admin') {
             router.replace('/dashboard');
         }
     }, [authLoading, profile, router]);
@@ -282,26 +266,16 @@ export default function AdminAnnouncementsPage() {
     const handleDelete = async (id: string) => {
         setDeleting(id);
         try {
-            const token = user ? await user.getIdToken() : '';
-            const backendUrl = API_URL.replace('8002', '8004');
-            const res = await fetch(`${backendUrl}/announcements/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail ?? 'Failed to delete');
-            }
+            await setDApi.deleteAnnouncement(id);
             toast.success('Announcement deleted.');
-        } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : 'Unknown error';
-            toast.error(`Error: ${msg}`);
+        } catch (e: any) {
+            toast.error(`Error: ${e.message}`);
         } finally {
             setDeleting(null);
         }
     };
 
-    if (authLoading || (!authLoading && profile?.role !== 'admin' && profile?.role !== 'super_admin')) {
+    if (authLoading || (!authLoading && profile?.role !== 'organizer' && profile?.role !== 'super_admin')) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 {authLoading ? (

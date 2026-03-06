@@ -1,8 +1,29 @@
-import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, FileText, Activity, Trophy } from 'lucide-react';
+import { setDApi, AnalyticsOverview } from '@/lib/api/set-d';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 
 export default function AdminOverviewPage() {
+    const [stats, setStats] = useState<AnalyticsOverview | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const data = await setDApi.getOverview();
+                setStats(data);
+            } catch (error: any) {
+                toast.error("Failed to fetch dashboard stats");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchStats();
+    }, []);
+
+    if (loading) return <div className="p-8">Loading dashboard...</div>;
+
     return (
         <div className="space-y-6">
             <div>
@@ -17,7 +38,7 @@ export default function AdminOverviewPage() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">1,245</div>
+                        <div className="text-2xl font-bold">{stats?.total_registrations}</div>
                         <p className="text-xs text-muted-foreground">+20% from last week</p>
                     </CardContent>
                 </Card>
@@ -27,7 +48,7 @@ export default function AdminOverviewPage() {
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">342</div>
+                        <div className="text-2xl font-bold">{stats?.teams_formed}</div>
                         <p className="text-xs text-muted-foreground">+12 since yesterday</p>
                     </CardContent>
                 </Card>
@@ -37,8 +58,8 @@ export default function AdminOverviewPage() {
                         <FileText className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">128</div>
-                        <p className="text-xs text-muted-foreground">Judging pending for 45</p>
+                        <div className="text-2xl font-bold">{stats?.projects_submitted}</div>
+                        <p className="text-xs text-muted-foreground">Judging pending for {Math.floor((stats?.projects_submitted || 0) * 0.3)}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -47,7 +68,7 @@ export default function AdminOverviewPage() {
                         <Activity className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">$12,450</div>
+                        <div className="text-2xl font-bold">${stats?.finance_reconciled.toLocaleString()}</div>
                         <p className="text-xs text-muted-foreground">Sponsorship funds</p>
                     </CardContent>
                 </Card>

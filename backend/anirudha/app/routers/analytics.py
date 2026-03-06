@@ -31,6 +31,8 @@ async def get_overview_stats(
         teams_formed=total_teams,
         attendance_rate=attendance_rate,
         tickets_resolved=total_resolved_tickets,
+        projects_submitted=total_teams // 2,  # Mock calculation
+        finance_reconciled=12450.0,           # Mock
         top_tracks=[
             {"name": "AI/ML", "count": 25},
             {"name": "Web3", "count": 15},
