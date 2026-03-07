@@ -106,7 +106,7 @@ export default function FinanceDashboard() {
                 formData.append('file', blob, 'mock_statement.csv');
             }
 
-            const response = await fetch("http://localhost:8001/api/finance/upload", {
+            const response = await fetch("http://localhost:8000/api/finance/upload", {
                 method: "POST",
                 body: formData
             });

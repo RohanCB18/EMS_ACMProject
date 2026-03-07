@@ -89,7 +89,7 @@ export default function AutomationDashboard() {
         }
         setIsGenerating(true);
         try {
-            const response = await fetch("http://localhost:8001/api/automation/certificates/generate", {
+            const response = await fetch("http://localhost:8000/api/automation/certificates/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -135,7 +135,7 @@ export default function AutomationDashboard() {
 
         for (const recipient of validRecipients) {
             try {
-                const response = await fetch("http://localhost:8001/api/automation/email/blast", {
+                const response = await fetch("http://localhost:8000/api/automation/email/blast", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -182,7 +182,7 @@ export default function AutomationDashboard() {
 
         setIsSending(true);
         try {
-            const response = await fetch("http://localhost:8001/api/automation/email/blast", {
+            const response = await fetch("http://localhost:8000/api/automation/email/blast", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
