@@ -324,50 +324,74 @@ export default function AutomationDashboard() {
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Bulk Generate & Email</CardTitle>
-                                <CardDescription>Add recipients below. Each gets a personalized PDF certificate via email.</CardDescription>
+                                <CardDescription>Fetch recipients directly from the Firebase Database or add them manually below.</CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                                {recipients.map((r, idx) => (
-                                    <div key={r.id} className="border rounded-lg p-3 space-y-2 relative">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-muted-foreground font-medium">Recipient {idx + 1}</span>
-                                            {recipients.length > 1 && (
-                                                <button onClick={() => removeRecipient(r.id)} className="text-destructive hover:text-red-500">
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input placeholder="Full Name" value={r.name} onChange={e => updateRecipient(r.id, 'name', e.target.value)} />
-                                            <Input placeholder="Email" type="email" value={r.email} onChange={e => updateRecipient(r.id, 'email', e.target.value)} />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Select value={r.role} onValueChange={v => updateRecipient(r.id, 'role', v)}>
-                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Participant">Participant</SelectItem>
-                                                    <SelectItem value="Winner">Winner</SelectItem>
-                                                    <SelectItem value="Runner Up">Runner Up</SelectItem>
-                                                    <SelectItem value="Mentor">Mentor</SelectItem>
-                                                    <SelectItem value="Judge">Judge</SelectItem>
-                                                    <SelectItem value="Volunteer">Volunteer</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Select value={r.track} onValueChange={v => updateRecipient(r.id, 'track', v)}>
-                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="General">General</SelectItem>
-                                                    <SelectItem value="AI/ML">AI/ML</SelectItem>
-                                                    <SelectItem value="Web3">Web3</SelectItem>
-                                                    <SelectItem value="HealthTech">HealthTech</SelectItem>
-                                                    <SelectItem value="FinTech">FinTech</SelectItem>
-                                                    <SelectItem value="Open Innovation">Open Innovation</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <Input placeholder="Project Name (optional)" className="text-xs h-8" value={r.project_name} onChange={e => updateRecipient(r.id, 'project_name', e.target.value)} />
+                            <CardContent className="space-y-4">
+                                <div className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-muted">
+                                    <div className="flex-1 space-y-2">
+                                        <Label>Select Target Audience (Database Sync)</Label>
+                                        <Select defaultValue="manual">
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Audience segment" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="manual">Custom / Manual Entry</SelectItem>
+                                                <SelectItem value="all">🏆 All Confirmed Participants</SelectItem>
+                                                <SelectItem value="winners">⭐ Hackathon Winners</SelectItem>
+                                                <SelectItem value="waitlisted">⏳ Waitlisted Users</SelectItem>
+                                                <SelectItem value="mentors">👔 Mentors & Judges</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                ))}
+                                    <div className="flex items-end">
+                                        <Button variant="secondary" className="w-full sm:w-auto" onClick={() => toast.success('Mock fetching 120 users from Firebase...')}>
+                                            <Layers className="mr-2 h-4 w-4" /> Fetch Users
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                                    {recipients.map((r, idx) => (
+                                        <div key={r.id} className="border rounded-lg p-3 space-y-2 relative">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-muted-foreground font-medium">Recipient {idx + 1}</span>
+                                                {recipients.length > 1 && (
+                                                    <button onClick={() => removeRecipient(r.id)} className="text-destructive hover:text-red-500">
+                                                        <X className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Input placeholder="Full Name" value={r.name} onChange={e => updateRecipient(r.id, 'name', e.target.value)} />
+                                                <Input placeholder="Email" type="email" value={r.email} onChange={e => updateRecipient(r.id, 'email', e.target.value)} />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Select value={r.role} onValueChange={v => updateRecipient(r.id, 'role', v)}>
+                                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="Participant">Participant</SelectItem>
+                                                        <SelectItem value="Winner">Winner</SelectItem>
+                                                        <SelectItem value="Runner Up">Runner Up</SelectItem>
+                                                        <SelectItem value="Mentor">Mentor</SelectItem>
+                                                        <SelectItem value="Judge">Judge</SelectItem>
+                                                        <SelectItem value="Volunteer">Volunteer</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <Select value={r.track} onValueChange={v => updateRecipient(r.id, 'track', v)}>
+                                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="General">General</SelectItem>
+                                                        <SelectItem value="AI/ML">AI/ML</SelectItem>
+                                                        <SelectItem value="Web3">Web3</SelectItem>
+                                                        <SelectItem value="HealthTech">HealthTech</SelectItem>
+                                                        <SelectItem value="FinTech">FinTech</SelectItem>
+                                                        <SelectItem value="Open Innovation">Open Innovation</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <Input placeholder="Project Name (optional)" className="text-xs h-8" value={r.project_name} onChange={e => updateRecipient(r.id, 'project_name', e.target.value)} />
+                                        </div>
+                                    ))}
+                                </div>
                                 <Button variant="outline" size="sm" className="w-full" onClick={addRecipient}>
                                     <Plus className="mr-2 h-3.5 w-3.5" /> Add Recipient
                                 </Button>
@@ -390,6 +414,25 @@ export default function AutomationDashboard() {
                             <CardDescription>Send targeted updates via SMTP. Separate multiple emails with a comma.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Database Audience</Label>
+                                <Select defaultValue="custom" onValueChange={(v) => {
+                                    if (v === "all") setEmailTo("all_participants@hackodyssey.com");
+                                    else if (v === "winners") setEmailTo("winners@hackodyssey.com");
+                                    else if (v === "waitlist") setEmailTo("waitlist@hackodyssey.com");
+                                    else setEmailTo("");
+                                }}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Database Segment" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="custom">Custom (Type below)</SelectItem>
+                                        <SelectItem value="all">🏆 All Confirmed Participants</SelectItem>
+                                        <SelectItem value="winners">⭐ Hackathon Winners</SelectItem>
+                                        <SelectItem value="waitlist">⏳ Waitlisted Users</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-2">
                                 <Label>To (comma-separated emails)</Label>
                                 <Input
