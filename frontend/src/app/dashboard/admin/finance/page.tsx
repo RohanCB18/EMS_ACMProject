@@ -147,7 +147,9 @@ export default function FinanceDashboard() {
                     <p className="text-muted-foreground">Manage budgets, track expenses, and automate reimbursements.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Report</Button>
+                    <Button variant="outline" onClick={() => { localStorage.removeItem('finance_transactions'); setTransactions([]); }}>
+                        <RefreshCw className="mr-2 h-4 w-4" /> Clear Data
+                    </Button>
                 </div>
             </div>
 
@@ -352,13 +354,74 @@ export default function FinanceDashboard() {
 
                 <TabsContent value="reimbursements" className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
+                        {/* Always show a dummy transaction for Razorpay testing */}
+                        <Card className="border-amber-200/50 shadow-sm relative overflow-hidden">
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
+                            <CardHeader className="pb-2">
+                                <div className="flex justify-between items-start">
+                                    <CardTitle className="text-base">Prize Money (AI Track Winner)</CardTitle>
+                                    <span className="text-lg font-bold">₹25000.00</span>
+                                </div>
+                                <CardDescription>Contact: Aman Singh</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm mb-4">
+                                    <CheckCircle2 className="h-4 w-4 text-green-500" /> Auto-validated: Winning Team Certificate Attached.
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        className="w-full bg-green-600 hover:bg-green-700"
+                                        onClick={async (e) => {
+                                            const btn = e.currentTarget;
+                                            const originalText = btn.innerText;
+                                            btn.innerText = "Processing Payout...";
+                                            btn.disabled = true;
+
+                                            try {
+                                                const res = await fetch("http://localhost:8001/api/finance/payout", {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({
+                                                        team_name: "Team Alpha Hackers",
+                                                        contact_name: "Aman Singh",
+                                                        email: "aman@example.com",
+                                                        account_number: "765432123456789",
+                                                        ifsc: "HDFC0001234",
+                                                        amount: 25000,
+                                                        description: "AI Track 1st Prize"
+                                                    })
+                                                });
+
+                                                const data = await res.json();
+
+                                                if (res.ok) {
+                                                    toast.success("Razorpay Transfer Initiated! Payout ID: " + data.data.id);
+                                                    btn.innerText = "Paid ✓";
+                                                    btn.classList.add("bg-gray-500");
+                                                } else {
+                                                    toast.error("Payout Failed: " + data.detail);
+                                                    btn.innerText = "Failed";
+                                                    btn.classList.add("bg-red-500");
+                                                }
+                                            } catch (err) {
+                                                toast.error("Network Error connecting to FastAPI");
+                                                btn.innerText = originalText;
+                                                btn.disabled = false;
+                                            }
+                                        }}
+                                    >Approve & Pay via Razorpay</Button>
+                                    <Button variant="outline" className="text-destructive">Reject</Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+
                         {transactions.filter(tx => tx.category === 'Reimbursement' && tx.status === 'Pending').map((tx, i) => (
                             <Card key={tx.id} className="border-amber-200/50 shadow-sm relative overflow-hidden">
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
                                         <CardTitle className="text-base">{tx.description}</CardTitle>
-                                        <span className="text-lg font-bold">${tx.amount.toFixed(2)}</span>
+                                        <span className="text-lg font-bold">₹{tx.amount.toFixed(2)}</span>
                                     </div>
                                     <CardDescription>Submitted on {tx.date}</CardDescription>
                                 </CardHeader>

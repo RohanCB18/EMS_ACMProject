@@ -7,10 +7,12 @@ export default function ParticipantLayout({
     children: React.ReactNode;
 }) {
     return (
-        <RouteGuard allowedRoles={['participant']}>
-            <DashboardLayout role="participant">
-                {children}
-            </DashboardLayout>
-        </RouteGuard>
+        <>
+            <RouteGuard allowedRoles={['participant']}>
+                <DashboardLayout role="participant">
+                    {children}
+                </DashboardLayout>
+            </RouteGuard>
+        </>
     );
 }

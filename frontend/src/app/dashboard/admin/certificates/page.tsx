@@ -217,7 +217,7 @@ export default function AutomationDashboard() {
                     <p className="text-muted-foreground">Automate certificate generation, bulk emails, and feedback forms.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><History className="mr-2 h-4 w-4" /> View Logs</Button>
+                    {/* <Button variant="outline"><History className="mr-2 h-4 w-4" /> View Logs</Button> */}
                 </div>
             </div>
 
@@ -259,7 +259,7 @@ export default function AutomationDashboard() {
                 <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-2 md:grid-cols-3">
                     <TabsTrigger value="certificates">Certificate Engine</TabsTrigger>
                     <TabsTrigger value="communications">Email Blaster</TabsTrigger>
-                    <TabsTrigger value="feedback">Feedback Loops</TabsTrigger>
+                    {/* <TabsTrigger value="feedback">Feedback Loops</TabsTrigger> */}
                 </TabsList>
 
                 {/* ── Certificate Engine Tab ─────────────────────────────── */}
@@ -434,7 +434,7 @@ export default function AutomationDashboard() {
                 </TabsContent>
 
                 {/* ── Feedback Loops Tab ────────────────────────────────── */}
-                <TabsContent value="feedback" className="space-y-4">
+                {/* <TabsContent value="feedback" className="space-y-4">
                     <Card className="border-amber-200/50 bg-amber-500/5">
                         <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                             <ShieldAlert className="h-10 w-10 text-amber-500 mb-4" />
@@ -445,7 +445,7 @@ export default function AutomationDashboard() {
                             <Button disabled variant="outline">Configure Forms (Locked)</Button>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                </TabsContent> */}
             </Tabs>
         </div>
     );

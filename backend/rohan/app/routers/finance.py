@@ -171,55 +171,84 @@ class PayoutRequest(BaseModel):
 async def process_reimbursement(payout: PayoutRequest):
     """
     Initiates a RazorpayX payout for expense reimbursement or prize money.
+    Uses direct HTTP requests to the RazorpayX REST API (Test Mode).
     """
+    import requests as http_requests
+
     key_id = os.getenv("RAZORPAY_KEY_ID")
     key_secret = os.getenv("RAZORPAY_KEY_SECRET")
 
     if not key_id or not key_secret:
         raise HTTPException(status_code=500, detail="Razorpay credentials not configured.")
 
+    auth = (key_id, key_secret)
+    headers = {"Content-Type": "application/json"}
+    base_url = "https://api.razorpay.com/v1"
+
     try:
-        client = razorpay.Client(auth=(key_id, key_secret))
+        # 1. Create a Contact in RazorpayX
+        contact_resp = http_requests.post(
+            f"{base_url}/contacts",
+            auth=auth,
+            headers=headers,
+            json={
+                "name": payout.contact_name,
+                "type": "employee",
+                "reference_id": f"team_{payout.team_name[:10].replace(' ', '_')}"
+            }
+        )
+        if not contact_resp.ok:
+            raise Exception(f"Contact creation failed: {contact_resp.text}")
+        contact = contact_resp.json()
 
-        # In a real scenario, you First create a Contact, then a Fund Account, then the Payout.
-        # This is strictly a structural mock implementation to guide the Finance Engineer.
-        
-        # 1. Create Contact (Mock)
-        # contact = client.contact.create({ "name": payout.contact_name, "type": "employee" })
-        
-        # 2. Create Fund Account (Mock)
-        # fund_account = client.fund_account.create({ "contact_id": contact['id'], "account_type": "bank_account", ...})
+        # 2. Add a Fund Account (Bank Account) to that Contact
+        fund_resp = http_requests.post(
+            f"{base_url}/fund_accounts",
+            auth=auth,
+            headers=headers,
+            json={
+                "contact_id": contact['id'],
+                "account_type": "bank_account",
+                "bank_account": {
+                    "name": payout.contact_name,
+                    "ifsc": payout.ifsc,
+                    "account_number": payout.account_number
+                }
+            }
+        )
+        if not fund_resp.ok:
+            raise Exception(f"Fund account creation failed: {fund_resp.text}")
+        fund_account = fund_resp.json()
 
-        # 3. Create Payout (Mock using Razorpay SDK layout)
-        mock_payout_response = {
-            "id": f"pout_{payout.team_name[:4]}xyz",
-            "entity": "payout",
-            "fund_account_id": "fa_00000000000001",
-            "amount": payout.amount * 100, # Razorpay expects paise
-            "currency": "INR",
-            "status": "processing",
-            "purpose": "reimbursement",
-            "narration": payout.description
-        }
+        # 3. Create the Payout (amount in paise)
+        payout_resp = http_requests.post(
+            f"{base_url}/payouts",
+            auth=auth,
+            headers=headers,
+            json={
+                "account_number": "2323230006767352",  # RazorpayX Test virtual account
+                "fund_account_id": fund_account['id'],
+                "amount": int(payout.amount * 100),  # paise
+                "currency": "INR",
+                "mode": "IMPS",
+                "purpose": "reimbursement",
+                "queue_if_low_balance": True,
+                "reference_id": f"ref_{payout.team_name[:5]}",
+                "narration": payout.description[:30]
+            }
+        )
+        if not payout_resp.ok:
+            raise Exception(f"Payout creation failed: {payout_resp.text}")
 
-        # Actual SDK call would look like this:
-        # response = client.payout.create({
-        #     "account_number": "2323230006767352", # Virtual account provided by RazorpayX
-        #     "fund_account_id": fund_account['id'],
-        #     "amount": int(payout.amount * 100),
-        #     "currency": "INR",
-        #     "mode": "IMPS",
-        #     "purpose": "reimbursement",
-        #     "queue_if_low_balance": True,
-        #     "narration": payout.description
-        # })
+        response = payout_resp.json()
 
         return {
             "message": "Payout initiated successfully",
-            "data": mock_payout_response
+            "data": response
         }
 
     except Exception as e:
+        print(f"[Razorpay Error]: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/webhook/razorpay")
@@ -237,21 +266,28 @@ async def razorpay_webhook_listener(request: Request):
         if webhook_secret:
             # Verify the webhook signature to ensure it's actually from Razorpay
             client = razorpay.Client(auth=(os.getenv("RAZORPAY_KEY_ID"), os.getenv("RAZORPAY_KEY_SECRET")))
-            # If invalid, this throws a SignatureVerificationError
-            # client.utility.verify_webhook_signature(body.decode("utf-8"), signature, webhook_secret)
-            pass
+            # This throws a SignatureVerificationError if someone tries to fake a ping
+            client.utility.verify_webhook_signature(body.decode("utf-8"), signature, webhook_secret)
 
         # Parse JSON
         event_dict = await request.json()
         event_type = event_dict.get('event')
         
+        # In a real scenario, this would connect to Firestore (Set A/C)
+        print(f"💰 [WEBHOOK RECEIVED]: {event_type}")
+        
         # Example switch-case for events
         if event_type == 'payout.processed':
-            # Update database status to 'Approved' & 'Reimbursed'
-            pass
+            payout_id = event_dict['payload']['payout']['entity']['id']
+            ref_id = event_dict['payload']['payout']['entity']['reference_id']
+            print(f"✅ SUCCESS: Payout {payout_id} for {ref_id} cleared!")
+            # Update database status to 'Paid'
+            
         elif event_type == 'payout.failed':
-            # Notify the admin
-            pass
+            payout_id = event_dict['payload']['payout']['entity']['id']
+            reason = event_dict['payload']['payout']['entity']['failure_reason']
+            print(f"❌ FAILED: Payout {payout_id} failed. Reason: {reason}")
+            # Route an alert to the Admin dashboard
             
         return {"status": "success", "message": f"Webhook {event_type} handled."}
 
