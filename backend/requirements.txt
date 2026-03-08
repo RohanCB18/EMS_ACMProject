@@ -1,7 +1,14 @@
 fastapi==0.115.0
 firebase-admin==6.6.0
 pydantic==2.10.0
+pydantic[email]
 python-dotenv==1.0.1
 python-multipart==0.0.12
 pyyaml
 uvicorn==0.32.0
+# Rohan's modules
+pandas
+reportlab
+openai
+qrcode[pil]
+pillow
