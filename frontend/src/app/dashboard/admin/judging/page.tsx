@@ -72,7 +72,7 @@ interface ProjectRanking {
 
 // ─── API Configuration ───────────────────────────────────────
 
-const JUDGING_API = process.env.NEXT_PUBLIC_JUDGING_API_URL || 'http://localhost:8000';
+const JUDGING_API = process.env.NEXT_PUBLIC_JUDGING_API_URL || 'http://localhost:8001';
 
 async function judgingFetch<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${JUDGING_API}${endpoint}`;
