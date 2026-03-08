@@ -13,4 +13,3 @@ openai
 qrcode[pil]
 pillow
 requests
-razorpay
