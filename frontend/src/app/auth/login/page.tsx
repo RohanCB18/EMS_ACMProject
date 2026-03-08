@@ -30,7 +30,8 @@ export default function LoginPage() {
             const result = await verifyTokenWithBackend(user);
 
             // Redirect based on role
-            if (result.profile?.role === 'admin') {
+            const role = result.profile?.role?.toLowerCase();
+            if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
                 router.push('/dashboard/admin/overview');
             } else {
                 router.push('/dashboard/participant/overview');
@@ -78,7 +79,8 @@ export default function LoginPage() {
                 });
             }
 
-            if (result.profile?.role === 'admin') {
+            const role = result.profile?.role?.toLowerCase();
+            if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
                 router.push('/dashboard/admin/overview');
             } else {
                 router.push('/dashboard/participant/overview');

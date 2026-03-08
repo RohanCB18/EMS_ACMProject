@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pydantic models for the EMS Authentication, Registration, and Team modules.
 
 These models are used for request/response validation in FastAPI endpoints.
@@ -179,6 +179,7 @@ from datetime import datetime
 class UserRole(str, Enum):
     SUPER_ADMIN = "super_admin"
     ORGANIZER = "organizer"
+    ADMIN = "admin"
     JUDGE = "judge"
     MENTOR = "mentor"
     VOLUNTEER = "volunteer"

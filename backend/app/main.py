@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
-    auth, teams,
+    auth, teams, registration,
     finance, automation,
     phases,
     attendance, helpdesk, mentors, sponsors,
@@ -21,6 +21,7 @@ app.add_middleware(
 
 # Aditya's Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(registration.router, prefix="/api/registration", tags=["Registration"])
 app.include_router(teams.router, prefix="/api/teams", tags=["Teams"])
 
 # Rohan's Routers

@@ -30,7 +30,7 @@ def _initialize_firebase():
         raise FileNotFoundError(
             f"Firebase service account key not found at: {service_account_path}\n"
             "Download it from Firebase Console > Project Settings > Service Accounts > "
-            "Generate New Private Key, and save it as 'serviceAccountKey.json' in backend/aditya/"
+            "Generate New Private Key, and save it as 'serviceAccountKey.json' in the backend root directory."
         )
 
     cred = credentials.Certificate(service_account_path)

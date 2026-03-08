@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { Home, Users, Settings, Trophy, FileText, Activity, ClipboardList, History, Megaphone, Layers } from 'lucide-react';
+import { Home, Users, Settings, Trophy, FileText, Activity, ClipboardList, History, Megaphone, Layers, Award } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -21,6 +21,7 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
                     { name: 'Announcements', icon: Megaphone, href: '/dashboard/admin/announcements' },
                     { name: 'Judging', icon: Trophy, href: '/dashboard/admin/judging' },
                     { name: 'Finance', icon: Activity, href: '/dashboard/admin/finance' },
+                    { name: 'Certificates', icon: Award, href: '/dashboard/admin/certificates' },
                     { name: 'Settings', icon: Settings, href: '/dashboard/admin/settings' },
                 ];
             case 'judge':
