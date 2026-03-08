@@ -12,3 +12,5 @@ reportlab
 openai
 qrcode[pil]
 pillow
+requests
+razorpay

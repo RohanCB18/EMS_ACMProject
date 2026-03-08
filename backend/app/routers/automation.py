@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, EmailStr
 from fastapi.responses import Response
 import io
