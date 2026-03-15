@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     auth, teams, registration,
     finance, automation,
-    phases,
+    phases, announcements,
     attendance, helpdesk, mentors, sponsors,
     allocation, judges, ranking, rubrics, scoring
 )
@@ -35,8 +35,10 @@ app.include_router(allocation.router, prefix="/api/judging/allocations", tags=["
 app.include_router(scoring.router, prefix="/api/judging/scores", tags=["Scoring"])
 app.include_router(ranking.router, prefix="/api/judging/rankings", tags=["Rankings"])
 
-# Aparna's Router
+# Aparna's Routers (Set B — Participant Dashboard & Event Flow Control)
 app.include_router(phases.router, prefix="/api/phases", tags=["Phases"])
+app.include_router(announcements.router, prefix="/api/announcements", tags=["Announcements"])
+
 
 # Anirudha's Routers
 app.include_router(attendance.router, prefix="/api/checkin", tags=["Attendance / Checkin"])

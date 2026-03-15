@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Router â€” Set B Backend
 
 Endpoints:
@@ -52,6 +52,13 @@ class FeatureFlags(BaseModel):
 
 class PhaseUpdateRequest(BaseModel):
     phaseId: str
+    featureFlags: Optional[FeatureFlags] = None
+
+
+class PhaseCreate(BaseModel):
+    name: str
+    order: int
+    description: Optional[str] = None
     featureFlags: Optional[FeatureFlags] = None
 
 
@@ -147,3 +154,71 @@ def update_feature_flags(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update feature flags: {str(e)}")
+
+
+@router.post("/", status_code=201)
+def create_phase(
+    payload: PhaseCreate,
+    _token: str = Depends(verify_admin_token),
+):
+    """
+    Admin only. Create a new event phase in Firestore.
+    Phases define the event lifecycle: Registration → Team Formation → Ideation
+    → Development → Submission → Judging
+    """
+    try:
+        db = get_db()
+
+        # Ensure order is unique
+        existing = list(
+            db.collection("phases").where("order", "==", payload.order).limit(1).stream()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"A phase with order={payload.order} already exists.",
+            )
+
+        flags = payload.featureFlags.model_dump() if payload.featureFlags else {
+            "allowEdits": True,
+            "allowSubmission": False,
+            "allowJudging": False,
+        }
+        doc_ref = db.collection("phases").document()
+        doc_ref.set({
+            "name": payload.name,
+            "order": payload.order,
+            "description": payload.description or "",
+            "isActive": False,
+            "featureFlags": flags,
+        })
+        created = doc_ref.get()
+        return phase_doc_to_dict(created)
+
+    except HTTPException:
+        raise
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create phase: {str(e)}")
+
+
+@router.delete("/{phase_id}")
+def delete_phase(
+    phase_id: str,
+    _token: str = Depends(verify_admin_token),
+):
+    """Admin only. Delete a phase by its Firestore document ID."""
+    try:
+        db = get_db()
+        ref = db.collection("phases").document(phase_id)
+        if not ref.get().exists:
+            raise HTTPException(status_code=404, detail="Phase not found.")
+        ref.delete()
+        return {"message": f"Phase '{phase_id}' deleted successfully."}
+    except HTTPException:
+        raise
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete phase: {str(e)}")
