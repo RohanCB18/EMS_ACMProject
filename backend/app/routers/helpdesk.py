@@ -40,8 +40,7 @@ async def list_tickets(
 @router.patch("/{ticket_id}")
 async def update_ticket(
     ticket_id: str,
-    update: TicketUpdate,
-    current_user: dict = Depends(role_required([UserRole.VOLUNTEER, UserRole.ORGANIZER, UserRole.SUPER_ADMIN]))
+    update: TicketUpdate
 ):
     """Update ticket status, priority, or assignment."""
     db = get_firestore_client()

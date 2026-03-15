@@ -1,24 +1,28 @@
 """
-Pydantic models for the EMS Authentication, Registration, and Team modules.
+Pydantic models for the EMS — Unified API.
 
-These models are used for request/response validation in FastAPI endpoints.
+Covers: Auth, Registration, Teams, Attendance, Helpdesk, Mentors, Sponsors,
+Admin RBAC, Analytics, and Judging (SET C).
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict
 from enum import Enum
+from datetime import datetime
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 # Enums
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 
 class UserRole(str, Enum):
-    PARTICIPANT = "participant"
+    SUPER_ADMIN = "super_admin"
+    ORGANIZER = "organizer"
     ADMIN = "admin"
     JUDGE = "judge"
     MENTOR = "mentor"
     VOLUNTEER = "volunteer"
+    PARTICIPANT = "participant"
 
 
 class RegistrationStatus(str, Enum):
@@ -37,9 +41,38 @@ class FieldType(str, Enum):
     TEXTAREA = "textarea"
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class TicketStatus(str, Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+
+
+class TicketPriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class AttendanceStatus(str, Enum):
+    PRESENT = "present"
+    ABSENT = "absent"
+
+
+class AllocationStatus(str, Enum):
+    ASSIGNED = "assigned"
+    PENDING = "pending"
+    REVIEWED = "reviewed"
+
+
+class EvaluationRound(str, Enum):
+    ROUND_1 = "round_1"
+    FINALS = "finals"
+
+
+# ──────────────────────────────────────────────
 # Auth Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 
 class TokenVerifyRequest(BaseModel):
     """Request body for verifying a Firebase ID token."""
@@ -68,9 +101,9 @@ class UserProfileResponse(BaseModel):
     created_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 # Registration / Form Schema Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 
 class ConditionalRule(BaseModel):
     """Conditional visibility rule for a form field."""
@@ -85,8 +118,8 @@ class FormField(BaseModel):
     label: str
     placeholder: Optional[str] = ""
     required: bool = False
-    options: Optional[list[str]] = None  # For select/dropdown
-    conditional: Optional[ConditionalRule] = None  # Conditional display
+    options: Optional[list[str]] = None
+    conditional: Optional[ConditionalRule] = None
 
 
 class FormSchemaCreate(BaseModel):
@@ -109,7 +142,7 @@ class RegistrationSubmit(BaseModel):
     """Request body for submitting a registration form."""
     uid: str
     event_id: str
-    responses: dict  # { field_id: value }
+    responses: dict
 
 
 class RegistrationResponse(BaseModel):
@@ -121,20 +154,20 @@ class RegistrationResponse(BaseModel):
     submitted_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 # Team Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
 
 class TeamCreate(BaseModel):
     """Request body for creating a new team."""
     name: str = Field(..., min_length=2, max_length=50)
     track: str
-    created_by: str  # UID of team creator
-    looking_for: Optional[str] = None  # Roles the team is looking for
+    created_by: str
+    looking_for: Optional[str] = None
     description: Optional[str] = None
     max_size: int = Field(default=4, ge=2, le=10)
     min_size: int = Field(default=2, ge=1, le=10)
-    institution_constraint: Optional[str] = None  # "same" | "different" | None
+    institution_constraint: Optional[str] = None
 
 
 class TeamResponse(BaseModel):
@@ -144,8 +177,8 @@ class TeamResponse(BaseModel):
     invite_code: str
     track: str
     created_by: str
-    members: list[str]  # list of UIDs
-    member_details: Optional[list[dict]] = None  # name + email for display
+    members: list[str]
+    member_details: Optional[list[dict]] = None
     looking_for: Optional[str] = None
     description: Optional[str] = None
     max_size: int
@@ -169,55 +202,41 @@ class TeamLeaveRequest(BaseModel):
 
 class TeamLockRequest(BaseModel):
     """Request body for locking a team (admin action)."""
-    lock_deadline: Optional[str] = None  # ISO timestamp
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
-from enum import Enum
-from datetime import datetime
+    lock_deadline: Optional[str] = None
 
-# Enums
-class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
-    ORGANIZER = "organizer"
-    ADMIN = "admin"
-    JUDGE = "judge"
-    MENTOR = "mentor"
-    VOLUNTEER = "volunteer"
-    PARTICIPANT = "participant"
 
-class TicketStatus(str, Enum):
-    OPEN = "open"
-    IN_PROGRESS = "in_progress"
-    RESOLVED = "resolved"
+# ──────────────────────────────────────────────
+# Attendance Models (Set D)
+# ──────────────────────────────────────────────
 
-class TicketPriority(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    URGENT = "urgent"
-
-class AttendanceStatus(str, Enum):
-    PRESENT = "present"
-    ABSENT = "absent"
-
-# Attendance Models
 class AttendanceRecord(BaseModel):
     uid: str
     phase_id: str
     status: AttendanceStatus
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    recorded_by: str  # Volunteer UID
+    recorded_by: str
 
 class CheckInRequest(BaseModel):
-    qr_data: str  # Encoded UID or Badge ID
+    qr_data: str
     phase_id: str
 
-# Mentor Models
+class QRBlastRequest(BaseModel):
+    """Request body for blasting QR codes to participants via email."""
+    usns: List[str] = Field(..., description="List of user UIDs (USNs) to send QR codes to")
+    event_id: str = Field(default="hackodyssey2026", description="Event identifier for QR payload")
+    expiry_hours: int = Field(default=24, ge=1, le=168, description="QR code validity period in hours")
+    include_certificate: bool = Field(default=False, description="Also attach a participation certificate")
+
+
+# ──────────────────────────────────────────────
+# Mentor Models (Set D)
+# ──────────────────────────────────────────────
+
 class MentorProfile(BaseModel):
     uid: str
     display_name: str
     expertise: List[str]
-    availability: List[Dict]  # List of slots: {"start": ISO, "end": ISO, "booked": bool}
+    availability: List[Dict]
     bio: Optional[str] = None
 
 class MentorSlot(BaseModel):
@@ -232,13 +251,17 @@ class SlotBookingRequest(BaseModel):
     slot_index: int
     team_id: str
 
-# Helpdesk Models
+
+# ──────────────────────────────────────────────
+# Helpdesk Models (Set D)
+# ──────────────────────────────────────────────
+
 class SupportTicket(BaseModel):
     ticket_id: Optional[str] = None
     raised_by_uid: str
     title: str
     description: str
-    category: str  # technical / logistics / queries
+    category: str
     priority: TicketPriority = TicketPriority.MEDIUM
     status: TicketStatus = TicketStatus.OPEN
     assigned_to_uid: Optional[str] = None
@@ -251,13 +274,17 @@ class TicketUpdate(BaseModel):
     assigned_to_uid: Optional[str] = None
     comment: Optional[str] = None
 
-# Sponsor & Track Models
+
+# ──────────────────────────────────────────────
+# Sponsor & Track Models (Set D)
+# ──────────────────────────────────────────────
+
 class Track(BaseModel):
     track_id: str
     name: str
     description: str
     problem_statements: List[str] = []
-    sponsor: Optional[str] = None  # Sponsor name for display
+    sponsor: Optional[str] = None
     sponsor_id: Optional[str] = None
     eligibility_rules: Optional[str] = None
     enrolled_teams: int = 0
@@ -269,9 +296,13 @@ class Sponsor(BaseModel):
     industry: Optional[str] = None
     logo_url: Optional[str] = None
     website_url: Optional[str] = None
-    metrics: Dict = {}  # engagement metrics
+    metrics: Dict = {}
 
-# Admin RBAC Models
+
+# ──────────────────────────────────────────────
+# Admin RBAC Models (Set D)
+# ──────────────────────────────────────────────
+
 class UserRoleUpdate(BaseModel):
     uid: str
     new_role: UserRole
@@ -281,7 +312,11 @@ class RolePermissions(BaseModel):
     allowed_pages: List[str]
     allowed_actions: List[str]
 
-# Analytics Models
+
+# ──────────────────────────────────────────────
+# Analytics Models (Set D)
+# ──────────────────────────────────────────────
+
 class AnalyticsOverview(BaseModel):
     total_registrations: int
     teams_formed: int
@@ -290,41 +325,17 @@ class AnalyticsOverview(BaseModel):
     projects_submitted: int = 0
     finance_reconciled: float = 0.0
     top_tracks: List[Dict]
-"""
-Pydantic models for the EMS Judging System (SET C).
-
-These models are used for request/response validation in FastAPI endpoints.
-"""
-
-from pydantic import BaseModel, Field
-from typing import Optional
-from enum import Enum
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Enums
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-class AllocationStatus(str, Enum):
-    ASSIGNED = "assigned"
-    PENDING = "pending"
-    REVIEWED = "reviewed"
-
-
-class EvaluationRound(str, Enum):
-    ROUND_1 = "round_1"
-    FINALS = "finals"
-
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Judge Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
+# Judge Models (SET C)
+# ──────────────────────────────────────────────
 
 class JudgeInvite(BaseModel):
     """Request body for inviting a judge."""
     email: str
     name: str
-    expertise_tags: list[str] = Field(default_factory=list, description="e.g. ['AI/ML', 'Web', 'Blockchain']")
+    expertise_tags: list[str] = Field(default_factory=list)
     organization: Optional[str] = None
 
 
@@ -354,9 +365,9 @@ class JudgeResponse(BaseModel):
     created_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Rubric Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
+# Rubric Models (SET C)
+# ──────────────────────────────────────────────
 
 class RubricCriteria(BaseModel):
     """A single criterion in a rubric."""
@@ -387,9 +398,9 @@ class RubricResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Allocation Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
+# Allocation Models (SET C)
+# ──────────────────────────────────────────────
 
 class AutoAllocateRequest(BaseModel):
     """Request body for auto-allocating projects to judges."""
@@ -419,9 +430,9 @@ class AllocationResponse(BaseModel):
     assigned_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Scoring Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
+# Scoring Models (SET C)
+# ──────────────────────────────────────────────
 
 class CriteriaScore(BaseModel):
     """Score for a single rubric criterion."""
@@ -456,9 +467,9 @@ class ScoreResponse(BaseModel):
     submitted_at: Optional[str] = None
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Ranking Models
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ──────────────────────────────────────────────
+# Ranking Models (SET C)
+# ──────────────────────────────────────────────
 
 class ProjectRanking(BaseModel):
     """Ranking entry for a single project."""

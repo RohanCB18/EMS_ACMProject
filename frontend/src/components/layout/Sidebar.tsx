@@ -1,6 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
-import { Home, Users, Settings, Trophy, FileText, Activity, ClipboardList, History, Megaphone, Layers, Award } from 'lucide-react';
+import {
+    Home, Users, Settings, Trophy, FileText, Activity,
+    ClipboardList, History, Megaphone, Layers, Award,
+    QrCode, LifeBuoy, GraduationCap, Building2, BarChart3,
+    ShieldCheck, Send
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -9,20 +14,23 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Sidebar({ className, role = 'participant' }: SidebarProps) {
-    // Define links based on role
     const getLinks = () => {
         switch (role) {
             case 'admin':
                 return [
                     { name: 'Overview', icon: Home, href: '/dashboard/admin/overview' },
                     { name: 'Form Builder', icon: FileText, href: '/dashboard/admin/form-builder' },
-                    { name: 'Users & RBAC', icon: Users, href: '/dashboard/admin/users' },
                     { name: 'Phases', icon: Layers, href: '/dashboard/admin/phases' },
                     { name: 'Announcements', icon: Megaphone, href: '/dashboard/admin/announcements' },
                     { name: 'Judging', icon: Trophy, href: '/dashboard/admin/judging' },
                     { name: 'Finance', icon: Activity, href: '/dashboard/admin/finance' },
                     { name: 'Certificates', icon: Award, href: '/dashboard/admin/certificates' },
-                    { name: 'Settings', icon: Settings, href: '/dashboard/admin/settings' },
+                    // ── Set D: On-Ground Ops ──
+                    { name: 'Helpdesk', icon: LifeBuoy, href: '/dashboard/admin/helpdesk' },
+                    { name: 'Mentors', icon: GraduationCap, href: '/dashboard/admin/mentors' },
+                    { name: 'Sponsors & Tracks', icon: Building2, href: '/dashboard/admin/sponsors' },
+                    { name: 'Analytics', icon: BarChart3, href: '/dashboard/admin/analytics' },
+                    { name: 'Users & RBAC', icon: ShieldCheck, href: '/dashboard/admin/roles' },
                 ];
             case 'judge':
                 return [

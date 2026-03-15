@@ -5,7 +5,8 @@ from app.routers import (
     finance, automation,
     phases, announcements,
     attendance, helpdesk, mentors, sponsors,
-    allocation, judges, ranking, rubrics, scoring
+    allocation, judges, ranking, rubrics, scoring,
+    admin, analytics
 )
 
 app = FastAPI(title="HackOdyssey Unified API")
@@ -45,6 +46,8 @@ app.include_router(attendance.router, prefix="/api/checkin", tags=["Attendance /
 app.include_router(helpdesk.router, prefix="/api/helpdesk", tags=["Helpdesk"])
 app.include_router(mentors.router, prefix="/api/mentors", tags=["Mentors"])
 app.include_router(sponsors.router, prefix="/api/sponsors", tags=["Sponsors"])
+app.include_router(admin.router, prefix="/api", tags=["Admin"])
+app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
 
 @app.get("/")
 def root():
