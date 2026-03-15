@@ -46,6 +46,15 @@ app.include_router(helpdesk.router, prefix="/api/helpdesk", tags=["Helpdesk"])
 app.include_router(mentors.router, prefix="/api/mentors", tags=["Mentors"])
 app.include_router(sponsors.router, prefix="/api/sponsors", tags=["Sponsors"])
 
+@app.get("/")
+def root():
+    return {
+        "service": "HackOdyssey Unified API",
+        "status": "running",
+        "docs": "http://localhost:8000/docs",
+        "health": "http://localhost:8000/health",
+    }
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "HackOdyssey Unified API"}
