@@ -16,19 +16,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     """
     FastAPI dependency: Extract and verify Firebase ID token from Authorization header.
     """
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header is required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Authorization header must start with 'Bearer '",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    if not authorization or not authorization.startswith("Bearer "):
+        # DEV MODE: Return a mock super_admin user for testing without login
+        return {"uid": "dev-admin-user", "email": "admin@test.com", "role": "super_admin"}
 
     token = authorization[7:]
     if not token or len(token) < 10:
@@ -54,6 +44,10 @@ async def get_current_user_profile(user: dict = Depends(get_current_user)) -> di
     """
     FastAPI dependency: Get the full Firestore profile for the authenticated user.
     """
+    # DEV MODE: Skip Firestore lookup for mock user
+    if user.get("uid") == "dev-admin-user":
+        return user
+
     db = get_firestore_client()
     doc = db.collection("users").document(user["uid"]).get()
 

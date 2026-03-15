@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from ..models import SupportTicket, TicketUpdate, UserRole, TicketStatus
 from ..middleware import role_required, get_current_user
 from app.core.firebase_config import get_firestore_client
@@ -40,7 +40,8 @@ async def list_tickets(
 @router.patch("/{ticket_id}")
 async def update_ticket(
     ticket_id: str,
-    update: TicketUpdate
+    update: TicketUpdate,
+    current_user: dict = Depends(get_current_user)
 ):
     """Update ticket status, priority, or assignment."""
     db = get_firestore_client()
