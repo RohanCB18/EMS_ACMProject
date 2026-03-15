@@ -13,6 +13,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -255,6 +256,15 @@ function AnnouncementFeed({ announcements, loading }: { announcements: Announcem
 
 export default function DashboardPage() {
     const { profile, loading: authLoading } = useAuth();
+    const router = useRouter();
+
+    // Redirect admins to admin dashboard
+    useEffect(() => {
+        const role = profile?.role?.toLowerCase();
+        if (!authLoading && (role === 'admin' || role === 'organizer' || role === 'super_admin')) {
+            router.push('/dashboard/admin/overview');
+        }
+    }, [profile, authLoading, router]);
 
     const [phases, setPhases] = useState<Phase[]>([]);
     const [currentPhaseId, setCurrentPhaseId] = useState<string | null>(null);

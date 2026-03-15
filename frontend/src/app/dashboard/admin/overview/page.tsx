@@ -1,3 +1,5 @@
+'use client';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, FileText, Activity, Trophy } from 'lucide-react';
 import { setDApi, AnalyticsOverview } from '@/lib/api/set-d';

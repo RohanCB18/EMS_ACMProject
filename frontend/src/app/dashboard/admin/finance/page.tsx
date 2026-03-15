@@ -53,6 +53,12 @@ export default function FinanceDashboard() {
         } catch { return []; }
     });
 
+    const [reimbursements, setReimbursements] = useState([
+        { id: '1', name: 'Aman Singh', usn: '1RV21CS001', mobile: '9876543210', amount: 25000, description: 'AI Track 1st Prize', status: 'Pending' },
+        { id: '2', name: 'Sara Khan', usn: '1RV21IS045', mobile: '9123456780', amount: 1500, description: 'Hardware Components bill', status: 'Processing' },
+        { id: '3', name: 'Rahul M', usn: '1RV21EC023', mobile: '9988776655', amount: 5000, description: 'Travel Reimbursement', status: 'Done' }
+    ]);
+
     // Persist transactions to localStorage whenever they update
     useEffect(() => {
         localStorage.setItem('finance_transactions', JSON.stringify(transactions));
@@ -106,7 +112,8 @@ export default function FinanceDashboard() {
                 formData.append('file', blob, 'mock_statement.csv');
             }
 
-            const response = await fetch("http://localhost:8001/api/finance/upload", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${API_BASE}/api/finance/upload`, {
                 method: "POST",
                 body: formData
             });
@@ -147,7 +154,9 @@ export default function FinanceDashboard() {
                     <p className="text-muted-foreground">Manage budgets, track expenses, and automate reimbursements.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Report</Button>
+                    <Button variant="outline" onClick={() => { localStorage.removeItem('finance_transactions'); setTransactions([]); }}>
+                        <RefreshCw className="mr-2 h-4 w-4" /> Clear Data
+                    </Button>
                 </div>
             </div>
 
@@ -209,7 +218,7 @@ export default function FinanceDashboard() {
                                 <CardDescription>Monthly expense burn rate leading up to the event.</CardDescription>
                             </CardHeader>
                             <CardContent className="h-[300px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                     <BarChart data={monthlySpend}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.2} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} />
@@ -227,7 +236,7 @@ export default function FinanceDashboard() {
                                 <CardDescription>Budget allocation across categories.</CardDescription>
                             </CardHeader>
                             <CardContent className="h-[300px] flex flex-col justify-center items-center">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                     <PieChart>
                                         <Pie
                                             data={expenseData}
@@ -351,24 +360,65 @@ export default function FinanceDashboard() {
                 </TabsContent>
 
                 <TabsContent value="reimbursements" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="text-lg font-medium tracking-tight">Manual Reimbursement Tracker (GPay)</h3>
+                            <p className="text-sm text-muted-foreground">Process payments manually via GPay and track their status.</p>
+                        </div>
+                    </div>
                     <div className="grid gap-4 md:grid-cols-2">
-                        {transactions.filter(tx => tx.category === 'Reimbursement' && tx.status === 'Pending').map((tx, i) => (
-                            <Card key={tx.id} className="border-amber-200/50 shadow-sm relative overflow-hidden">
-                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
+                        {reimbursements.map((reimb) => (
+                            <Card key={reimb.id} className={`border-l-4 shadow-sm relative overflow-hidden ${reimb.status === 'Pending' ? 'border-amber-400' :
+                                reimb.status === 'Processing' ? 'border-blue-400' : 'border-green-400'
+                                }`}>
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
-                                        <CardTitle className="text-base">{tx.description}</CardTitle>
-                                        <span className="text-lg font-bold">${tx.amount.toFixed(2)}</span>
+                                        <div>
+                                            <CardTitle className="text-base">{reimb.description}</CardTitle>
+                                            <CardDescription className="mt-1 font-medium text-foreground">{reimb.name} • {reimb.usn}</CardDescription>
+                                            <CardDescription className="flex items-center gap-1 mt-1 text-sm bg-muted/60 p-1 px-2 rounded-md font-mono">
+                                                📱 GPay: {reimb.mobile}
+                                            </CardDescription>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end">
+                                            <span className="text-lg font-bold">₹{reimb.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                            <div className="mt-2">
+                                                {reimb.status === 'Pending' && <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 uppercase tracking-widest text-[10px]">Pending</Badge>}
+                                                {reimb.status === 'Processing' && <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 uppercase tracking-widest text-[10px]">Processing</Badge>}
+                                                {reimb.status === 'Done' && <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 uppercase tracking-widest text-[10px]">Done ✓</Badge>}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <CardDescription>Submitted on {tx.date}</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm mb-4">
-                                        <CheckCircle2 className="h-4 w-4 text-green-500" /> Auto-validated: Receipt clearly legible.
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button className="w-full bg-green-600 hover:bg-green-700">Approve & Pay via Razorpay</Button>
-                                        <Button variant="outline" className="text-destructive">Reject</Button>
+                                    <div className="flex gap-2 mt-2">
+                                        {reimb.status === 'Pending' && (
+                                            <Button
+                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                                onClick={() => {
+                                                    const updated = reimbursements.map(r => r.id === reimb.id ? { ...r, status: 'Processing' } : r);
+                                                    setReimbursements(updated);
+                                                    toast.success(`Moved ${reimb.name}'s request to Processing`);
+                                                }}
+                                            >Mark as Processing</Button>
+                                        )}
+                                        {reimb.status === 'Processing' && (
+                                            <Button
+                                                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                                onClick={() => {
+                                                    const updated = reimbursements.map(r => r.id === reimb.id ? { ...r, status: 'Done' } : r);
+                                                    setReimbursements(updated);
+                                                    toast.success(`Payment marked as Done for ${reimb.name}`);
+                                                }}
+                                            >Mark as Paid (Done)</Button>
+                                        )}
+                                        {reimb.status === 'Done' && (
+                                            <Button
+                                                variant="outline"
+                                                className="w-full text-muted-foreground bg-muted/30"
+                                                disabled
+                                            ><CheckCircle2 className="mr-2 h-4 w-4" /> Payment Completed</Button>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>

@@ -29,6 +29,8 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+console.log("Firebase Config:", firebaseConfig);
+
 // Initialize Firebase (prevent duplicate initialization in dev hot-reload)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
@@ -39,7 +41,7 @@ const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
 
 // Backend API base URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Sign in with email and password.
