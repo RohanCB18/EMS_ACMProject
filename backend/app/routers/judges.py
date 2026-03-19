@@ -1,4 +1,4 @@
-﻿"""
+"""
 Judge Onboarding & Management Router
 
 Endpoints:
@@ -69,6 +69,9 @@ async def list_judges(
     for doc in docs:
         data = doc.to_dict()
         data["judge_id"] = doc.id
+        # Handle Firestore Timestamp to string conversion
+        if "created_at" in data and hasattr(data["created_at"], "isoformat"):
+            data["created_at"] = data["created_at"].isoformat()
         judges.append(JudgeResponse(**data))
 
     return judges

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Ranking Engine Router
 
 Endpoints:
@@ -37,13 +37,29 @@ def _aggregate_rankings(db, event_id: str, round_val: str) -> list[ProjectRankin
     for doc in score_docs:
         data = doc.to_dict()
         pid = data["project_id"]
+        score_val = data.get("weighted_total", 0)
+        
+        # Retroactive fix: if score is 0 but criteria exist, recalculate
+        if score_val == 0 and data.get("criteria_scores"):
+            criteria_scores = data.get("criteria_scores", [])
+            # Standard weights fallback (25/25/25/25)
+            total = 0.0
+            for cs in criteria_scores:
+                score = cs.get("score", 0)
+                # Assume standard max_score 10 and 25% weight
+                total += (score / 10) * 100 * 0.25
+            score_val = round(total, 2)
+            logger.info(f"Retroactively fixed 0% score for project {pid}: {score_val}%")
+        
+        logger.debug(f"Aggregation: Found score {score_val} for project {pid}")
+        
         if pid not in project_scores:
             project_scores[pid] = {
                 "project_id": pid,
                 "project_title": data.get("project_title", "Untitled"),
                 "scores": [],
             }
-        project_scores[pid]["scores"].append(data.get("weighted_total", 0))
+        project_scores[pid]["scores"].append(score_val)
 
     # Get project metadata for track and team info
     for pid, pdata in project_scores.items():
@@ -52,6 +68,16 @@ def _aggregate_rankings(db, event_id: str, round_val: str) -> list[ProjectRankin
             proj = proj_doc.to_dict()
             pdata["track"] = proj.get("track", "")
             pdata["team_name"] = proj.get("team_name", "")
+        else:
+            # Fallback to teams collection if no projects doc exists
+            team_doc = db.collection("teams").document(pid).get()
+            if team_doc.exists:
+                team = team_doc.to_dict()
+                pdata["track"] = team.get("track", "")
+                pdata["team_name"] = team.get("name", "")
+            else:
+                pdata["track"] = "General"
+                pdata["team_name"] = "Unknown Team"
 
     # Check shortlist status
     shortlist_docs = db.collection("shortlists") \

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Rubric Management Router
 
 Endpoints:
@@ -73,6 +73,10 @@ async def get_rubrics(
     for doc in docs:
         data = doc.to_dict()
         data["rubric_id"] = doc.id
+        # Handle Firestore Timestamp to string conversion
+        for field in ["created_at", "updated_at"]:
+            if field in data and hasattr(data[field], "isoformat"):
+                data[field] = data[field].isoformat()
         rubrics.append(RubricResponse(**data))
 
     return rubrics

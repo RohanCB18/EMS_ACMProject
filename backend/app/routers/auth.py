@@ -1,4 +1,4 @@
-﻿"""
+"""
 Authentication API Router.
 
 Handles Firebase token verification and user profile management in Firestore.
@@ -32,6 +32,16 @@ async def verify_token(user: dict = Depends(get_current_user)):
         profile = None
         if user_doc.exists:
             profile = user_doc.to_dict()
+            
+            # Auto-sync role: If participant is in the judges list, upgrade to judge
+            if profile.get("role") == "participant":
+                email = user.get("email")
+                if email:
+                    judges_ref = db.collection("judges").where("email", "==", email).limit(1).get()
+                    if len(list(judges_ref)) > 0:
+                        profile["role"] = "judge"
+                        db.collection("users").document(user["uid"]).update({"role": "judge"})
+                        print(f"DEBUG: Autograded {email} to judge role")
 
         return {
             "valid": True,
@@ -69,12 +79,27 @@ async def create_user_profile(
                 detail="An account with this email already exists."
             )
 
+    # Add logger import at the top level
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Auto-detect if user was invited as a judge
+    resolved_role = profile.role.value
+    try:
+        judges_ref = db.collection("judges").where("email", "==", profile.email).limit(1).get()
+        judge_list = list(judges_ref)
+        if judge_list:
+            resolved_role = "judge"
+            logger.info(f"Auto-detected invited judge: {profile.email}")
+    except Exception as e:
+        logger.warning(f"Could not check judges collection: {e}")
+
     # Build profile document
     profile_data = {
         "uid": profile.uid,
         "email": profile.email,
         "display_name": profile.display_name,
-        "role": profile.role.value,
+        "role": resolved_role,
         "institution": profile.institution,
         "phone": profile.phone,
         "team_id": None,

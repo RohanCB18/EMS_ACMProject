@@ -1,4 +1,4 @@
-﻿"""
+"""
 Scoring & Feedback Router
 
 Endpoints:
@@ -98,11 +98,25 @@ async def submit_score(
     for rd in rubric_docs:
         rubric_criteria = rd.to_dict().get("criteria", [])
 
+    # Fallback to default rubric if none exists in DB
+    if not rubric_criteria:
+        rubric_criteria = [
+            {"id": "innovation", "name": "Innovation", "weight": 25, "max_score": 10},
+            {"id": "execution", "name": "Execution", "weight": 25, "max_score": 10},
+            {"id": "presentation", "name": "Presentation", "weight": 25, "max_score": 10},
+            {"id": "impact", "name": "Impact", "weight": 25, "max_score": 10},
+        ]
+
     weighted_total = _calculate_weighted_total(body.criteria_scores, rubric_criteria)
 
     # Get project title
     project_doc = db.collection("projects").document(body.project_id).get()
-    project_title = project_doc.to_dict().get("title", "Untitled") if project_doc.exists else "Untitled"
+    if project_doc.exists:
+        project_title = project_doc.to_dict().get("title", "Untitled")
+    else:
+        # Fallback to teams collection
+        team_doc = db.collection("teams").document(body.project_id).get()
+        project_title = team_doc.to_dict().get("name", "Untitled Team") if team_doc.exists else "Untitled"
 
     now = datetime.now(timezone.utc).isoformat()
     score_data = {

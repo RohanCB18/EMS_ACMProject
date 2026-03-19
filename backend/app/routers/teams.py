@@ -1,4 +1,4 @@
-﻿"""
+"""
 Teams API Router.
 
 Handles team creation, joining, leaving, invite codes, and deadline-based locking.
@@ -79,6 +79,30 @@ def _check_team_locked(team_data: dict):
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Endpoints
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.get("/", response_model=list[TeamResponse])
+async def list_all_teams(
+    admin: dict = Depends(require_role("admin", "super_admin", "organizer"))
+):
+    """List all teams (Admin only)."""
+    db = get_firestore_client()
+    docs = db.collection("teams").get()
+    
+    teams = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["team_id"] = doc.id
+        
+        # Handle Firestore Timestamp to string conversion
+        if "created_at" in data and hasattr(data["created_at"], "isoformat"):
+            data["created_at"] = data["created_at"].isoformat()
+            
+        # Member details for UI display
+        data["member_details"] = _get_member_details(db, data.get("members", []))
+        teams.append(TeamResponse(**data))
+    
+    return teams
+
 
 @router.post("/create", response_model=TeamResponse)
 async def create_team(

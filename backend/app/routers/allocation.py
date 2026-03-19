@@ -1,4 +1,4 @@
-﻿"""
+"""
 Smart Project Allocation Router
 
 Endpoints:
@@ -48,10 +48,26 @@ async def auto_allocate(
         raise HTTPException(status_code=400, detail="No judges found. Invite judges first.")
 
     # Fetch all projects (team submissions)
-    project_docs = db.collection("projects").where("event_id", "==", body.event_id).get()
-    projects = [{"id": d.id, **d.to_dict()} for d in project_docs]
+    # Prioritize teams collection as the source for projects
+    team_docs = db.collection("teams").get()
+    projects = []
+    for d in team_docs:
+        data = d.to_dict()
+        projects.append({
+            "id": d.id,
+            "title": data.get("name", "Untitled Team"),
+            "track": data.get("track", "General"),
+            "event_id": body.event_id
+        })
+
     if not projects:
-        raise HTTPException(status_code=400, detail="No projects found for this event.")
+        # If no teams found, try the 'projects' collection as a fallback
+        logger.info("No teams found, falling back to projects collection")
+        project_docs = db.collection("projects").where("event_id", "==", body.event_id).get()
+        projects = [{"id": d.id, **d.to_dict()} for d in project_docs]
+
+    if not projects:
+        raise HTTPException(status_code=400, detail="No projects or teams found to allocate.")
 
     # Build COI lookup: judge_id -> set of project_ids
     coi_map = {}
@@ -155,22 +171,33 @@ async def override_allocation(
         if not judge_doc.exists:
             raise HTTPException(status_code=404, detail="Judge not found")
 
+        # Try project first, then fallback to teams
         project_doc = db.collection("projects").document(body.project_id).get()
-        if not project_doc.exists:
-            raise HTTPException(status_code=404, detail="Project not found")
+        if project_doc.exists:
+            project = project_doc.to_dict()
+            project_title = project.get("title", "Untitled")
+            track = project.get("track", "")
+            event_id = project.get("event_id", "default_event")
+        else:
+            team_doc = db.collection("teams").document(body.project_id).get()
+            if not team_doc.exists:
+                raise HTTPException(status_code=404, detail="Project/Team not found")
+            team = team_doc.to_dict()
+            project_title = team.get("name", "Untitled Team")
+            track = team.get("track", "")
+            event_id = team.get("event_id", "default_event")
 
         judge = judge_doc.to_dict()
-        project = project_doc.to_dict()
 
         alloc_data = {
             "judge_id": body.judge_id,
             "judge_name": judge.get("name", ""),
             "project_id": body.project_id,
-            "project_title": project.get("title", "Untitled"),
-            "track": project.get("track", ""),
-            "event_id": project.get("event_id", ""),
+            "project_title": project_title,
+            "track": track,
+            "event_id": event_id,
             "status": AllocationStatus.ASSIGNED.value,
-            "round": EvaluationRound.ROUND_1.value,
+            "round": body.round.value,
             "assigned_at": datetime.now(timezone.utc).isoformat(),
         }
         doc_ref = db.collection("allocations").document()

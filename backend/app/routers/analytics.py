@@ -24,11 +24,17 @@ async def get_overview_stats(
         total_users = db.collection("users").count().get()[0][0].value
         total_teams = db.collection("teams").count().get()[0][0].value
         total_resolved_tickets = db.collection("tickets").where("status", "==", "resolved").count().get()[0][0].value
+        
+        # Real project count: sum of projects collection + teams used as fallback
+        projects_count = db.collection("projects").count().get()[0][0].value
+        if projects_count == 0:
+            # If no projects, the judging system uses teams
+            projects_count = total_teams
 
         present_count = db.collection("attendance").where("status", "==", "present").count().get()[0][0].value
-        attendance_rate = (present_count / total_users * 100) if total_users > 0 else 85.5
+        attendance_rate = (present_count / total_users * 100) if total_users > 0 else 0.0
     except Exception:
-        total_users, total_teams, total_resolved_tickets, attendance_rate = 150, 42, 56, 85.5
+        total_users, total_teams, total_resolved_tickets, attendance_rate, projects_count = 0, 0, 0, 0, 0
 
     # Build top tracks from tracks collection
     top_tracks = []
@@ -39,23 +45,17 @@ async def get_overview_stats(
             top_tracks.append({"name": data.get("name", doc.id), "count": data.get("enrolled_teams", 0)})
         top_tracks.sort(key=lambda t: t["count"], reverse=True)
     except Exception:
-        top_tracks = [
-            {"name": "AI/ML", "count": 25},
-            {"name": "Web3", "count": 15},
-            {"name": "Fintech", "count": 10}
-        ]
+        top_tracks = []
 
     return AnalyticsOverview(
         total_registrations=total_users,
         teams_formed=total_teams,
         attendance_rate=attendance_rate,
         tickets_resolved=total_resolved_tickets,
-        projects_submitted=total_teams // 2,
+        projects_submitted=projects_count,
         finance_reconciled=12450.0,
         top_tracks=top_tracks if top_tracks else [
-            {"name": "AI/ML", "count": 25},
-            {"name": "Web3", "count": 15},
-            {"name": "Fintech", "count": 10}
+            {"name": "General", "count": total_teams}
         ]
     )
 

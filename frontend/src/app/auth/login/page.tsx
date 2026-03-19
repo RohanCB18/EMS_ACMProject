@@ -33,6 +33,8 @@ export default function LoginPage() {
             const role = result.profile?.role?.toLowerCase();
             if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
                 router.push('/dashboard/admin/overview');
+            } else if (role === 'judge') {
+                router.push('/dashboard/judge');
             } else {
                 router.push('/dashboard/participant/overview');
             }
@@ -82,6 +84,8 @@ export default function LoginPage() {
             const role = result.profile?.role?.toLowerCase();
             if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
                 router.push('/dashboard/admin/overview');
+            } else if (role === 'judge') {
+                router.push('/dashboard/judge');
             } else {
                 router.push('/dashboard/participant/overview');
             }

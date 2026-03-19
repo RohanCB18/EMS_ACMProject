@@ -415,6 +415,7 @@ class AllocationOverride(BaseModel):
     judge_id: str
     project_id: str
     action: str = Field(..., description="'assign' or 'remove'")
+    round: EvaluationRound = EvaluationRound.ROUND_1
 
 
 class AllocationResponse(BaseModel):
