@@ -35,8 +35,8 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
             case 'judge':
                 return [
                     { name: 'Overview', icon: Home, href: '/dashboard/judge' },
-                    { name: 'My Assignments', icon: ClipboardList, href: '/dashboard/judge' },
-                    { name: 'History', icon: History, href: '/dashboard/judge' },
+                    { name: 'My Assignments', icon: ClipboardList, href: '/dashboard/judge?tab=assignments' },
+                    { name: 'History', icon: History, href: '/dashboard/judge?tab=history' },
                 ];
             case 'participant':
             default:

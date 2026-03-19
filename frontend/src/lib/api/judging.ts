@@ -202,4 +202,10 @@ export const judgingApi = {
 
     exportWinners: (eventId: string, round: string = 'finals', topN: number = 10) =>
         judgingFetch<any>(`/api/judging/rankings/${eventId}/export?round=${round}&top_n=${topN}`),
+
+    saveShortlist: (eventId: string, data: { round: string; advance_to: string; project_ids: string[] }) =>
+        judgingFetch<{ message: string; project_ids: string[] }>(`/api/judging/rankings/${eventId}/shortlist`, {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
 };

@@ -92,6 +92,8 @@ export default function JudgingDashboard() {
     const [teams, setTeams] = useState<any[]>([]);
     const [manualAllocOpen, setManualAllocOpen] = useState(false);
     const [manualForm, setManualForm] = useState({ judge_id: '', project_id: '', round: 'round_1' });
+    const [autoAllocOpen, setAutoAllocOpen] = useState(false);
+    const [judgesPerProject, setJudgesPerProject] = useState(3);
 
     // ─── Ranking State ───────────────────────────────────────
     const [rankings, setRankings] = useState<ProjectRanking[]>([]);
@@ -237,8 +239,13 @@ export default function JudgingDashboard() {
     const handleAutoAllocate = async () => {
         setIsAllocating(true);
         try {
-            const result = await judgingApi.autoAllocate({ event_id: EVENT_ID, round: 'round_1' });
+            const result = await judgingApi.autoAllocate({ 
+                event_id: EVENT_ID, 
+                round: selectedRound,
+                judges_per_project: judgesPerProject
+            });
             toast.success(result.message);
+            setAutoAllocOpen(false);
             await fetchAllocations();
         } catch (err: any) {
             toast.error(err.message || 'Failed to auto-allocate');
@@ -269,6 +276,38 @@ export default function JudgingDashboard() {
         }
     };
 
+    const handleExport = async () => {
+        try {
+            const data = await judgingApi.exportWinners(EVENT_ID, selectedRound, 100);
+            
+            // Format as CSV for Excel
+            const headers = ['Rank', 'Project Title', 'Team Name', 'Track', 'Average Score', 'Evaluations'];
+            const rows = data.winners.map((w: any) => [
+                w.rank,
+                `"${(w.project_title || '').replace(/"/g, '""')}"`,
+                `"${(w.team_name || '').replace(/"/g, '""')}"`,
+                `"${(w.track || '').replace(/"/g, '""')}"`,
+                w.avg_score,
+                w.evaluations,
+            ]);
+            
+            const csvContent = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rankings_${selectedRound}_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Excel results exported successfully');
+        } catch (err: any) {
+            toast.error('Failed to export results');
+        }
+    };
+
     const handleRemoveAllocation = async (alloc: Allocation) => {
         if (!confirm(`Remove assignment of "${alloc.project_title}" from judge ${alloc.judge_name}?`)) return;
         try {
@@ -285,10 +324,24 @@ export default function JudgingDashboard() {
         }
     };
 
-    const handleToggleShortlist = (projectId: string) => {
-        setRankings(prev => prev.map(r =>
+    const handleToggleShortlist = async (projectId: string) => {
+        const newRankings = rankings.map(r =>
             r.project_id === projectId ? { ...r, shortlisted: !r.shortlisted } : r
-        ));
+        );
+        setRankings(newRankings);
+
+        const shortlistedIds = newRankings.filter(r => r.shortlisted).map(r => r.project_id);
+
+        try {
+            await judgingApi.saveShortlist(EVENT_ID, {
+                round: selectedRound,
+                advance_to: 'finals',
+                project_ids: shortlistedIds,
+            });
+            toast.success('Shortlist updated');
+        } catch (err: any) {
+            toast.error('Failed to save shortlist');
+        }
     };
 
     // ─── Computed Stats ──────────────────────────────────────
@@ -626,10 +679,42 @@ export default function JudgingDashboard() {
                                     </DialogContent>
                                 </Dialog>
 
-                                <Button onClick={handleAutoAllocate} disabled={isAllocating}>
-                                    <Shuffle className={`mr-2 h-4 w-4 ${isAllocating ? 'animate-spin' : ''}`} />
-                                    {isAllocating ? 'Allocating...' : 'Auto-Allocate'}
-                                </Button>
+                                <Dialog open={autoAllocOpen} onOpenChange={setAutoAllocOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button>
+                                            <Shuffle className="mr-2 h-4 w-4" /> Auto-Allocate
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Intelligent Auto-Allocation</DialogTitle>
+                                            <DialogDescription>Assign projects to judges using a load-balancing algorithm.</DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4 pt-2">
+                                            <div className="space-y-2">
+                                                <Label>Judges per Project</Label>
+                                                <Input type="number" min={1} max={10} value={judgesPerProject} onChange={e => setJudgesPerProject(Number(e.target.value) || 1)} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Evaluation Round</Label>
+                                                <Select value={selectedRound} onValueChange={setSelectedRound}>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="round_1">Round 1</SelectItem>
+                                                        <SelectItem value="finals">Finals (Shortlisted only)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-xs text-muted-foreground mt-1">If Finals is selected, only shortlisted projects will be assigned.</p>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setAutoAllocOpen(false)}>Cancel</Button>
+                                            <Button onClick={handleAutoAllocate} disabled={isAllocating}>
+                                                {isAllocating ? 'Allocating...' : 'Start Allocation'}
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -703,7 +788,7 @@ export default function JudgingDashboard() {
                                         <SelectItem value="finals">Finals</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export</Button>
+                                <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export</Button>
                             </div>
                         </CardHeader>
                         <CardContent>

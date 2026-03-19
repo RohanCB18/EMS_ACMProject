@@ -145,6 +145,15 @@ async def shortlist_projects(
     """Shortlist selected projects to advance to the next round."""
     db = get_firestore_client()
 
+    # Clear previous shortlists for this event/round combo
+    existing_docs = db.collection("shortlists") \
+        .where("event_id", "==", event_id) \
+        .where("round", "==", body.round.value) \
+        .where("advance_to", "==", body.advance_to.value).get()
+    
+    for doc in existing_docs:
+        doc.reference.delete()
+
     now = datetime.now(timezone.utc).isoformat()
     shortlist_data = {
         "event_id": event_id,

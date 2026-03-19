@@ -34,21 +34,18 @@ async def auto_allocate(
     admin: dict = Depends(require_role("admin", "super_admin")),
 ):
     """
-    Auto-assign projects to judges using smart allocation:
-    1. Match by track/expertise tags
-    2. Balance judge load
-    3. Respect COI flags
+    Intelligent auto-allocation algorithm based on dynamic scoring.
+    1. Score judges per project (-1 to skip, +10 match track, -2 per existing assign).
+    2. Respect strict COI and duplicate assignment checks.
+    3. Update judge load dynamically to balance distribution.
     """
     db = get_firestore_client()
 
-    # Fetch all judges
     judge_docs = db.collection("judges").get()
     judges = [{"id": d.id, **d.to_dict()} for d in judge_docs]
     if not judges:
         raise HTTPException(status_code=400, detail="No judges found. Invite judges first.")
 
-    # Fetch all projects (team submissions)
-    # Prioritize teams collection as the source for projects
     team_docs = db.collection("teams").get()
     projects = []
     for d in team_docs:
@@ -61,7 +58,6 @@ async def auto_allocate(
         })
 
     if not projects:
-        # If no teams found, try the 'projects' collection as a fallback
         logger.info("No teams found, falling back to projects collection")
         project_docs = db.collection("projects").where("event_id", "==", body.event_id).get()
         projects = [{"id": d.id, **d.to_dict()} for d in project_docs]
@@ -69,47 +65,67 @@ async def auto_allocate(
     if not projects:
         raise HTTPException(status_code=400, detail="No projects or teams found to allocate.")
 
-    # Build COI lookup: judge_id -> set of project_ids
+    if body.round == EvaluationRound.FINALS:
+        logger.info(f"Allocating for Finals round. Fetching shortlist for event {body.event_id}")
+        shortlist_docs = db.collection("shortlists") \
+            .where("event_id", "==", body.event_id) \
+            .where("advance_to", "==", EvaluationRound.FINALS.value).get()
+        
+        shortlisted_ids = set()
+        for doc in shortlist_docs:
+            shortlisted_ids.update(doc.to_dict().get("project_ids", []))
+        
+        if not shortlisted_ids:
+            logger.warning(f"No projects found in shortlist for Finals round of event {body.event_id}")
+            projects = []
+        else:
+            projects = [p for p in projects if p["id"] in shortlisted_ids]
+            logger.info(f"Filtered to {len(projects)} shortlisted projects for Finals")
+
+    if not projects:
+        raise HTTPException(status_code=400, detail=f"No suitable projects found to allocate for {body.round.value} round.")
+
+    load_map = {j["id"]: j.get("assigned_count", 0) for j in judges}
+    existing_assignments = set()
+
+    existing = db.collection("allocations") \
+        .where("event_id", "==", body.event_id) \
+        .where("round", "==", body.round.value).get()
+    
+    for doc in existing:
+        data = doc.to_dict()
+        if data.get("status") == AllocationStatus.ASSIGNED.value:
+            doc.reference.delete()
+        else:
+            existing_assignments.add((data["project_id"], data["judge_id"]))
+
     coi_map = {}
     for judge in judges:
         coi_ids = {f["project_id"] for f in judge.get("coi_flags", [])}
         coi_map[judge["id"]] = coi_ids
-
-    # Track current load per judge
-    load_map = {j["id"]: 0 for j in judges}
-
-    # Delete existing allocations for this event+round to start fresh
-    existing = db.collection("allocations") \
-        .where("event_id", "==", body.event_id) \
-        .where("round", "==", body.round.value).get()
-    for doc in existing:
-        doc.reference.delete()
 
     allocations_created = []
     now = datetime.now(timezone.utc).isoformat()
 
     for project in projects:
         project_track = project.get("track", "").lower()
-
-        # Score each judge for this project
         scored_judges = []
+
         for judge in judges:
-            # Skip COI conflicts
             if project["id"] in coi_map.get(judge["id"], set()):
+                continue
+            
+            if (project["id"], judge["id"]) in existing_assignments:
                 continue
 
             score = 0
-            # Expertise match bonus
             tags = [t.lower() for t in judge.get("expertise_tags", [])]
             if project_track and project_track in tags:
                 score += 10
 
-            # Lower load = higher priority (load-balancing)
             score -= load_map[judge["id"]] * 2
-
             scored_judges.append((judge, score))
 
-        # Sort by score descending, pick top N
         scored_judges.sort(key=lambda x: x[1], reverse=True)
         selected = scored_judges[:body.judges_per_project]
 
@@ -127,12 +143,13 @@ async def auto_allocate(
             }
             doc_ref = db.collection("allocations").document()
             doc_ref.set(alloc_data)
+            
             load_map[judge["id"]] += 1
+            existing_assignments.add((project["id"], judge["id"]))
             allocations_created.append({**alloc_data, "allocation_id": doc_ref.id})
 
-    # Update assigned_count on judge profiles
     for judge in judges:
-        if load_map[judge["id"]] > 0:
+        if load_map[judge["id"]] > judge.get("assigned_count", 0):
             db.collection("judges").document(judge["id"]).update({
                 "assigned_count": load_map[judge["id"]]
             })

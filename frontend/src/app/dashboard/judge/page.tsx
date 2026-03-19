@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +60,23 @@ interface PastEvaluation {
 // ═══════════════════════════════════════════════════════════
 
 export default function JudgeDashboard() {
-    const [activeTab, setActiveTab] = useState('assignments');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const tabParam = searchParams.get('tab');
+    
+    const [activeTab, setActiveTab] = useState(tabParam || 'assignments');
+
+    // Sync state with URL param if it changes externally
+    useEffect(() => {
+        if (tabParam && tabParam !== activeTab) {
+            setActiveTab(tabParam);
+        }
+    }, [tabParam, activeTab]);
+
+    const handleTabChange = (val: string) => {
+        setActiveTab(val);
+        router.push(`/dashboard/judge?tab=${val}`, { scroll: false });
+    };
 
     // ─── State ───────────────────────────────────────────────
     const [assignments, setAssignments] = useState<Assignment[]>([]);
@@ -277,7 +294,7 @@ export default function JudgeDashboard() {
             </div>
 
             {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="assignments" className="flex items-center gap-1.5"><ClipboardList className="h-4 w-4" /> My Assignments</TabsTrigger>
                     <TabsTrigger value="history" className="flex items-center gap-1.5"><BarChart3 className="h-4 w-4" /> History</TabsTrigger>
