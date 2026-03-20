@@ -32,16 +32,24 @@ async def verify_token(user: dict = Depends(get_current_user)):
         profile = None
         if user_doc.exists:
             profile = user_doc.to_dict()
-            
-            # Auto-sync role: If participant is in the judges list, upgrade to judge
-            if profile.get("role") == "participant":
-                email = user.get("email")
-                if email:
-                    judges_ref = db.collection("judges").where("email", "==", email).limit(1).get()
-                    if len(list(judges_ref)) > 0:
-                        profile["role"] = "judge"
-                        db.collection("users").document(user["uid"]).update({"role": "judge"})
-                        print(f"DEBUG: Autograded {email} to judge role")
+        else:
+            # Fallback: look up by email (handles OAuth users with different UIDs)
+            email = user.get("email")
+            if email:
+                email_query = db.collection("users").where("email", "==", email).limit(1).get()
+                for doc in email_query:
+                    profile = doc.to_dict()
+                    profile["uid"] = doc.id  # Preserve the original UID
+                    break
+
+        # Auto-sync role: If participant is in the judges list, upgrade to judge
+        if profile and profile.get("role") == "participant":
+            email = user.get("email")
+            if email:
+                judges_ref = db.collection("judges").where("email", "==", email).limit(1).get()
+                if len(list(judges_ref)) > 0:
+                    profile["role"] = "judge"
+                    db.collection("users").document(user["uid"]).update({"role": "judge"})
 
         return {
             "valid": True,

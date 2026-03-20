@@ -33,8 +33,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2, Camera } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, query, where, doc, updateDoc, orderBy } from 'firebase/firestore';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#a05195', '#f95d6a'];
 
@@ -53,11 +55,72 @@ export default function FinanceDashboard() {
         } catch { return []; }
     });
 
-    const [reimbursements, setReimbursements] = useState([
-        { id: '1', name: 'Aman Singh', usn: '1RV21CS001', mobile: '9876543210', amount: 25000, description: 'AI Track 1st Prize', status: 'Pending' },
-        { id: '2', name: 'Sara Khan', usn: '1RV21IS045', mobile: '9123456780', amount: 1500, description: 'Hardware Components bill', status: 'Processing' },
-        { id: '3', name: 'Rahul M', usn: '1RV21EC023', mobile: '9988776655', amount: 5000, description: 'Travel Reimbursement', status: 'Done' }
-    ]);
+    const [reimbursements, setReimbursements] = useState<any[]>([]);
+
+    // Real-time synchronization for reimbursements
+    useEffect(() => {
+        // 1. Listen to the dedicated 'reimbursements' collection (volunteers)
+        const qExp = query(collection(db, "reimbursements"), orderBy("created_at", "desc"));
+        const unsubExp = onSnapshot(qExp, (snapshot) => {
+            const volunteerExp = snapshot.docs.map(doc => ({
+                id: doc.id,
+                name: doc.data().volunteer_name,
+                usn: doc.data().volunteer_usn,
+                mobile: doc.data().volunteer_mobile,
+                amount: doc.data().amount,
+                description: doc.data().item_description,
+                status: doc.data().status.charAt(0).toUpperCase() + doc.data().status.slice(1), // Capitalize
+                receipt_url: doc.data().receipt_url,
+                type: 'volunteer'
+            }));
+            
+            // Combine with winners (fetched below)
+            setReimbursements(prev => {
+                const winners = prev.filter(r => r.type === 'winner');
+                return [...volunteerExp, ...winners];
+            });
+        });
+
+        // 2. Listen to winners from 'users' collection
+        const qWin = query(collection(db, "users"), where("role", "==", "winner"));
+        const unsubWin = onSnapshot(qWin, (snapshot) => {
+            const winners = snapshot.docs.map(doc => ({
+                id: doc.id,
+                name: doc.data().display_name,
+                usn: doc.data().usn || 'N/A',
+                mobile: doc.data().mobile || 'N/A',
+                amount: 25000, // Standard prize for now, mapping could be more complex
+                description: `${doc.data().track || 'General'} Track 1st Prize`,
+                status: 'Pending', // Default for winners unless we add a payout field
+                type: 'winner'
+            }));
+
+            setReimbursements(prev => {
+                const volunteers = prev.filter(r => r.type === 'volunteer');
+                return [...volunteers, ...winners];
+            });
+        });
+
+        return () => {
+            unsubExp();
+            unsubWin();
+        };
+    }, []);
+
+    const updateReimbursementStatus = async (id: string, newStatus: string, type: string) => {
+        try {
+            if (type === 'volunteer') {
+                const docRef = doc(db, "reimbursements", id);
+                await updateDoc(docRef, { status: newStatus.toLowerCase() });
+                toast.success(`Updated status to ${newStatus}`);
+            } else {
+                toast.info("Winner prize status tracking to be integrated with Payouts API.");
+            }
+        } catch (error) {
+            console.error("Error updating status:", error);
+            toast.error("Failed to update status.");
+        }
+    };
 
     // Persist transactions to localStorage whenever they update
     useEffect(() => {
@@ -374,7 +437,12 @@ export default function FinanceDashboard() {
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <CardTitle className="text-base">{reimb.description}</CardTitle>
+                                            <div className="flex items-center gap-2">
+                                                <CardTitle className="text-base">{reimb.description}</CardTitle>
+                                                <Badge variant="outline" className="text-[9px] uppercase tracking-tighter h-4">
+                                                    {reimb.type === 'winner' ? '🏆 Prize' : '🙋 Volunteer'}
+                                                </Badge>
+                                            </div>
                                             <CardDescription className="mt-1 font-medium text-foreground">{reimb.name} • {reimb.usn}</CardDescription>
                                             <CardDescription className="flex items-center gap-1 mt-1 text-sm bg-muted/60 p-1 px-2 rounded-md font-mono">
                                                 📱 GPay: {reimb.mobile}
@@ -391,34 +459,33 @@ export default function FinanceDashboard() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex gap-2 mt-2">
-                                        {reimb.status === 'Pending' && (
-                                            <Button
-                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                                onClick={() => {
-                                                    const updated = reimbursements.map(r => r.id === reimb.id ? { ...r, status: 'Processing' } : r);
-                                                    setReimbursements(updated);
-                                                    toast.success(`Moved ${reimb.name}'s request to Processing`);
-                                                }}
-                                            >Mark as Processing</Button>
+                                    <div className="flex flex-col gap-2 mt-2">
+                                        {reimb.receipt_url && (
+                                            <Button variant="link" className="h-4 p-0 text-xs justify-start text-blue-600" onClick={() => window.open(reimb.receipt_url, '_blank')}>
+                                                <Camera className="mr-1 h-3 w-3" /> View Receipt Screenshot
+                                            </Button>
                                         )}
-                                        {reimb.status === 'Processing' && (
-                                            <Button
-                                                className="w-full bg-green-600 hover:bg-green-700 text-white"
-                                                onClick={() => {
-                                                    const updated = reimbursements.map(r => r.id === reimb.id ? { ...r, status: 'Done' } : r);
-                                                    setReimbursements(updated);
-                                                    toast.success(`Payment marked as Done for ${reimb.name}`);
-                                                }}
-                                            >Mark as Paid (Done)</Button>
-                                        )}
-                                        {reimb.status === 'Done' && (
-                                            <Button
-                                                variant="outline"
-                                                className="w-full text-muted-foreground bg-muted/30"
-                                                disabled
-                                            ><CheckCircle2 className="mr-2 h-4 w-4" /> Payment Completed</Button>
-                                        )}
+                                        <div className="flex gap-2">
+                                            {reimb.status === 'Pending' && (
+                                                <Button
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                                    onClick={() => updateReimbursementStatus(reimb.id, 'Processing', reimb.type)}
+                                                >Mark as Processing</Button>
+                                            )}
+                                            {reimb.status === 'Processing' && (
+                                                <Button
+                                                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                                    onClick={() => updateReimbursementStatus(reimb.id, 'Done', reimb.type)}
+                                                >Mark as Paid (Done)</Button>
+                                            )}
+                                            {reimb.status === 'Done' && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full text-muted-foreground bg-muted/30"
+                                                    disabled
+                                                ><CheckCircle2 className="mr-2 h-4 w-4" /> Payment Completed</Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

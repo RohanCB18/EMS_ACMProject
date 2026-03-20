@@ -28,7 +28,7 @@ export async function fetchApi<T = any>(endpoint: string, options: FetchOptions 
 
     // Setup headers and wait for token
     const headers = new Headers(customOptions.headers);
-    if (!headers.has('Content-Type')) {
+    if (!headers.has('Content-Type') && !(customOptions.body instanceof FormData)) {
         headers.set('Content-Type', 'application/json');
     }
 

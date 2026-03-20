@@ -39,7 +39,7 @@ export default function LoginPage() {
                 router.push('/dashboard/participant/overview');
             }
         } catch (err: unknown) {
-            const error = err as { code?: string; message?: string };
+            const error = err as { code?: string; message?: string; status?: number; data?: any };
             if (error.code === 'auth/user-not-found') {
                 setError('No account found with this email. Sign up instead?');
             } else if (error.code === 'auth/wrong-password') {
@@ -66,19 +66,29 @@ export default function LoginPage() {
                 : await signInWithGitHub();
 
             // Verify with backend — if profile doesn't exist, create it
-            const result = await verifyTokenWithBackend(user);
+            let result = await verifyTokenWithBackend(user);
 
             if (!result.profile) {
                 // First-time OAuth login — create profile via backend
-                await fetchApi('/api/auth/create-profile', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        uid: user.uid,
-                        email: user.email,
-                        display_name: user.displayName || 'User',
-                        role: 'participant',
-                    }),
-                });
+                try {
+                    await fetchApi('/api/auth/create-profile', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            uid: user.uid,
+                            email: user.email,
+                            display_name: user.displayName || 'User',
+                            role: 'participant',
+                        }),
+                    });
+                } catch (createErr: any) {
+                    // 409 means profile already exists — that's fine, just continue login
+                    if (createErr?.status !== 409) {
+                        throw createErr;
+                    }
+                    // Re-fetch the profile since it exists
+                    const refreshed = await verifyTokenWithBackend(user);
+                    result = refreshed;
+                }
             }
 
             const role = result.profile?.role?.toLowerCase();

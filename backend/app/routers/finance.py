@@ -3,6 +3,8 @@ from pydantic import BaseModel
 import pandas as pd
 from io import BytesIO
 import os
+from datetime import datetime, timedelta
+from app.core.firebase_config import get_storage_bucket
 
 router = APIRouter()
 
@@ -156,3 +158,44 @@ async def ingest_bank_statement(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error parsing CSV: {str(e)}")
 
+
+@router.post("/upload-receipt")
+async def upload_receipt(file: UploadFile = File(...)):
+    """
+    Uploads a receipt image to Firebase Storage and returns the download URL.
+    This bypasses CORS issues by performing the upload server-side.
+    """
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Only image files are allowed.")
+
+        bucket = get_storage_bucket()
+        
+        # Create a unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"reimbursements/{timestamp}_{file.filename}"
+        blob = bucket.blob(filename)
+
+        # Read the file content
+        content = await file.read()
+        
+        # Upload to Storage
+        blob.upload_from_string(
+            content,
+            content_type=file.content_type
+        )
+
+        # Make public or generate a long-lived signed URL
+        # For simplicity in this demo, we'll use a signed URL valid for 1 year
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(days=365),
+            method="GET",
+        )
+
+        return {"url": url}
+
+    except Exception as e:
+        print(f"Error in upload_receipt: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload receipt: {str(e)}")

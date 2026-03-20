@@ -7,19 +7,22 @@ shared Firestore client and Auth verification utilities.
 
 import os
 import firebase_admin
-from firebase_admin import credentials, firestore, auth
+from firebase_admin import credentials, firestore, auth, storage
 from dotenv import load_dotenv
 
 load_dotenv()
 
 _firebase_app = None
 _firestore_client = None
+_storage_bucket = None
 
 
 def _initialize_firebase():
     """Initialize Firebase Admin SDK if not already initialized."""
-    global _firebase_app, _firestore_client
+    global _firebase_app, _firestore_client, _storage_bucket
     if _firebase_app is not None:
+        if _storage_bucket is None:
+            _storage_bucket = storage.bucket()
         return
 
     service_account_path = os.getenv(
@@ -34,14 +37,35 @@ def _initialize_firebase():
         )
 
     cred = credentials.Certificate(service_account_path)
-    _firebase_app = firebase_admin.initialize_app(cred)
+    storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET", "xxxx-1196c.firebasestorage.app")
+    
+    print(f"DEBUG: Initializing Firebase with storageBucket: {storage_bucket}")
+    
+    _firebase_app = firebase_admin.initialize_app(cred, {
+        'storageBucket': storage_bucket
+    })
     _firestore_client = firestore.client()
+    try:
+        _storage_bucket = storage.bucket()
+        print(f"DEBUG: Successfully got storage bucket: {_storage_bucket.name}")
+    except Exception as e:
+        print(f"DEBUG: Failed to get default storage bucket: {e}")
+        _storage_bucket = storage.bucket(storage_bucket) # Try specific
 
 
 def get_firestore_client():
     """Get Firestore client, initializing Firebase if needed."""
     _initialize_firebase()
     return _firestore_client
+
+
+def get_storage_bucket():
+    """Get Firebase Storage bucket, initializing Firebase if needed."""
+    global _storage_bucket
+    _initialize_firebase()
+    if _storage_bucket is None:
+        _storage_bucket = storage.bucket()
+    return _storage_bucket
 
 
 def verify_firebase_token(id_token: str) -> dict:
