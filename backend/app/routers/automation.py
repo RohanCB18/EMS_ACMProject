@@ -130,6 +130,9 @@ class EmailBlastRequest(BaseModel):
     subject: str
     body: str # HTML or Markdown
     include_certificate_for: str | None = None
+    role: str = "Participant"
+    track: str = "General"
+    project_name: str = ""
 
 def send_smtp_email(to_emails: list[str], subject: str, body: str, attachment_bytes: bytes = None, attachment_name: str = None):
     # Retrieve credentials from .env (we will mock this if not configured so the app doesn't crash)
@@ -183,7 +186,9 @@ async def email_blast(request: EmailBlastRequest, background_tasks: BackgroundTa
         if request.include_certificate_for:
             cert_data = CertificateRequest(
                 name=request.include_certificate_for,
-                role="Participant",
+                role=request.role,
+                track=request.track,
+                project_name=request.project_name,
                 email=request.to_emails[0] # assuming single recipient for personalized certs usually
             )
             attachment_bytes = generate_certificate_pdf(cert_data)

@@ -24,7 +24,7 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
                     { name: 'Announcements', icon: Megaphone, href: '/dashboard/admin/announcements' },
                     { name: 'Judging', icon: Trophy, href: '/dashboard/admin/judging' },
                     { name: 'Finance', icon: Activity, href: '/dashboard/admin/finance' },
-                    { name: 'Certificates', icon: Award, href: '/dashboard/admin/certificates' },
+                    { name: 'Certificates & Mails', icon: Award, href: '/dashboard/admin/certificates' },
                     // ── Set D: On-Ground Ops ──
                     { name: 'Helpdesk', icon: LifeBuoy, href: '/dashboard/admin/helpdesk' },
                     { name: 'Mentors', icon: GraduationCap, href: '/dashboard/admin/mentors' },

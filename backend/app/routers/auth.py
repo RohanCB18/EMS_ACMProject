@@ -6,7 +6,7 @@ Robustness improvements: Uses reusable auth dependencies and strict Pydantic val
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from google.cloud.firestore_v1 import SERVER_TIMESTAMP
+from firebase_admin.firestore import SERVER_TIMESTAMP
 
 from app.core.firebase_config import get_firestore_client
 from app.models import UserProfileCreate, UserProfileResponse
