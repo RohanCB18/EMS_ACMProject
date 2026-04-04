@@ -96,14 +96,14 @@ async function getIdToken(): Promise<string | null> {
 /**
  * Create user profile in backend Firestore via API.
  */
-async function createUserProfile(user: User, displayName: string, institution?: string) {
+async function createUserProfile(user: User, displayName: string, institution?: string, role: string = 'participant') {
     return fetchApi("/api/auth/create-profile", {
         method: "POST",
         body: JSON.stringify({
             uid: user.uid,
             email: user.email,
             display_name: displayName || user.displayName || "User",
-            role: "participant",
+            role,
             institution: institution || null,
         }),
     });

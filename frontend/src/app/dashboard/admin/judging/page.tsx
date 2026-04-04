@@ -24,6 +24,7 @@ import {
     Plus, Trash2, AlertTriangle, CheckCircle2, Clock, Star, Target,
     Gavel, Award, Eye, Flag, Save,
 } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
 
 // ─── Types ────────────────────────────────────────────────────
 // Types are now imported from the shared client
@@ -278,22 +279,21 @@ export default function JudgingDashboard() {
 
     const handleExport = async () => {
         try {
-            const data = await judgingApi.exportWinners(EVENT_ID, selectedRound, 100);
-            
-            // Format as CSV for Excel
-            const headers = ['Rank', 'Project Title', 'Team Name', 'Track', 'Average Score', 'Evaluations'];
-            const rows = data.winners.map((w: any) => [
-                w.rank,
-                `"${(w.project_title || '').replace(/"/g, '""')}"`,
-                `"${(w.team_name || '').replace(/"/g, '""')}"`,
-                `"${(w.track || '').replace(/"/g, '""')}"`,
-                w.avg_score,
-                w.evaluations,
-            ]);
-            
-            const csvContent = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (!user) throw new Error('Not authenticated');
+            const token = await user.getIdToken();
+
+            const response = await fetch(`${API_BASE}/api/judging/rankings/${EVENT_ID}/export?round=${selectedRound}&top_n=100`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) throw new Error('Failed to export results');
+
+            const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -302,9 +302,9 @@ export default function JudgingDashboard() {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            toast.success('Excel results exported successfully');
+            toast.success('Results exported successfully');
         } catch (err: any) {
-            toast.error('Failed to export results');
+            toast.error(err.message || 'Failed to export results');
         }
     };
 
@@ -371,7 +371,7 @@ export default function JudgingDashboard() {
                     <p className="text-muted-foreground">Manage judges, rubrics, allocations, and rankings.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Results</Button>
+                    <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export Results</Button>
                 </div>
             </div>
 

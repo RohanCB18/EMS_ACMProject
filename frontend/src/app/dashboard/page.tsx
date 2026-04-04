@@ -261,8 +261,19 @@ export default function DashboardPage() {
     // Redirect admins to admin dashboard
     useEffect(() => {
         const role = profile?.role?.toLowerCase();
-        if (!authLoading && (role === 'admin' || role === 'organizer' || role === 'super_admin')) {
-            router.push('/dashboard/admin/overview');
+        if (!authLoading) {
+            if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
+                router.push('/dashboard/admin/overview');
+                return;
+            }
+            if (role === 'judge') {
+                router.push('/dashboard/judge');
+                return;
+            }
+            if (role === 'volunteer') {
+                router.push('/dashboard/volunteer');
+                return;
+            }
         }
     }, [profile, authLoading, router]);
 

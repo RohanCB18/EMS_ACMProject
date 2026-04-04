@@ -1,9 +1,13 @@
+
+'use client';
+
 import React from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Clock, Users, ArrowRight } from 'lucide-react';
 
-export default function ParticipantOverviewPage() {
+export default function ParticipantDashboardPage() {
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -11,8 +15,10 @@ export default function ParticipantOverviewPage() {
                     <h2 className="text-3xl font-bold tracking-tight">Welcome, Participant!</h2>
                     <p className="text-muted-foreground">Track your progress and manage your hackathon journey.</p>
                 </div>
-                <Button>
-                    Submit Final Project <ArrowRight className="ml-2 h-4 w-4" />
+                <Button asChild>
+                    <Link href="/dashboard/participant/team">
+                        Submit Final Project <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
                 </Button>
             </div>
 
@@ -41,8 +47,10 @@ export default function ParticipantOverviewPage() {
                             <Users className="h-5 w-5" />
                             <span className="font-semibold">Not in a team yet</span>
                         </div>
-                        <Button variant="link" className="px-0 h-auto mt-2 text-primary">
-                            Find teammates &rarr;
+                        <Button variant="link" className="px-0 h-auto mt-2 text-primary" asChild>
+                            <Link href="/dashboard/participant/team">
+                                Find teammates &rarr;
+                            </Link>
                         </Button>
                     </CardContent>
                 </Card>
