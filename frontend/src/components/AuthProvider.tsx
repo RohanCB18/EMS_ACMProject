@@ -20,6 +20,7 @@ import {
     verifyTokenWithBackend,
     type User,
 } from '@/lib/firebase';
+import { clearAllCache } from '@/lib/cache';
 
 interface UserProfile {
     uid: string;
@@ -94,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const handleSignOut = async () => {
         await firebaseSignOut();
+        clearAllCache(); // wipe all cached API responses on logout
         setUser(null);
         setProfile(null);
     };

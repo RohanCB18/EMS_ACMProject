@@ -25,15 +25,18 @@ def _initialize_firebase():
             _storage_bucket = storage.bucket()
         return
 
+    # Resolve path: env var → next to this file (backend/app/) → backend root
+    _default_key_path = os.path.join(os.path.dirname(__file__), "..", "serviceAccountKey.json")
     service_account_path = os.getenv(
-        "FIREBASE_SERVICE_ACCOUNT_KEY", "serviceAccountKey.json"
+        "FIREBASE_SERVICE_ACCOUNT_KEY", _default_key_path
     )
+    service_account_path = os.path.normpath(service_account_path)
 
     if not os.path.exists(service_account_path):
         raise FileNotFoundError(
             f"Firebase service account key not found at: {service_account_path}\n"
-            "Download it from Firebase Console > Project Settings > Service Accounts > "
-            "Generate New Private Key, and save it as 'serviceAccountKey.json' in the backend root directory."
+            "Place 'serviceAccountKey.json' in backend/app/ or set the "
+            "FIREBASE_SERVICE_ACCOUNT_KEY env var to the correct path."
         )
 
     cred = credentials.Certificate(service_account_path)
