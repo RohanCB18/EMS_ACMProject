@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Upload, Send, CheckCircle2, IndianRupee, FileText, Camera } from 'lucide-react';
 import { db, auth } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { fetchApi } from '@/lib/api';
 import { toast } from 'sonner';
 
 export default function VolunteerReimbursementPage() {
@@ -52,18 +52,18 @@ export default function VolunteerReimbursementPage() {
                 reader.readAsDataURL(file);
             });
 
-            // 2. Save data + receipt image directly to Firestore
-            await addDoc(collection(db, "reimbursements"), {
-                volunteer_name: formData.name,
-                volunteer_usn: formData.usn,
-                volunteer_mobile: formData.mobile,
-                item_description: formData.itemDescription,
-                amount: parseFloat(formData.amount),
-                tx_id: formData.txId,
-                receipt_url: base64Url,
-                status: "pending",
-                created_at: serverTimestamp(),
-                user_id: auth.currentUser?.uid || "anonymous"
+            // 2. Save data + receipt image through secure backend API
+            await fetchApi("/api/finance/reimbursements", {
+                method: "POST",
+                body: JSON.stringify({
+                    volunteer_name: formData.name,
+                    volunteer_usn: formData.usn,
+                    volunteer_mobile: formData.mobile,
+                    item_description: formData.itemDescription,
+                    amount: parseFloat(formData.amount),
+                    tx_id: formData.txId,
+                    receipt_url: base64Url,
+                })
             });
 
             toast.success("Reimbursement request submitted successfully!");

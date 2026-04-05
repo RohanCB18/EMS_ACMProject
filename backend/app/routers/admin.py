@@ -15,7 +15,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 @router.patch("/roles")
 async def update_user_role(
     update: UserRoleUpdate,
-    current_user: dict = Depends(role_required([UserRole.SUPER_ADMIN, UserRole.ORGANIZER]))
+    current_user: dict = Depends(role_required([UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.ADMIN]))
 ):
     """Update a user's role (Super Admin / Organizer only)."""
     db = get_firestore_client()
@@ -29,9 +29,13 @@ async def update_user_role(
 
 @router.get("/users")
 async def list_users_with_roles(
-    current_user: dict = Depends(role_required([UserRole.SUPER_ADMIN, UserRole.ORGANIZER]))
+    role: str = None,
+    current_user: dict = Depends(role_required([UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.ADMIN]))
 ):
-    """List all users with their current roles."""
+    """List all users with their current roles with an optional role filter."""
     db = get_firestore_client()
-    docs = db.collection("users").stream()
+    query = db.collection("users")
+    if role:
+        query = query.where("role", "==", role)
+    docs = query.stream()
     return [{**doc.to_dict(), "uid": doc.id} for doc in docs]

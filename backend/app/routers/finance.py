@@ -4,7 +4,10 @@ import pandas as pd
 from io import BytesIO
 import os
 from datetime import datetime, timedelta
-from app.core.firebase_config import get_storage_bucket
+from app.core.firebase_config import get_storage_bucket, get_firestore_client
+from firebase_admin import firestore
+from app.middleware import get_current_user
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 
 router = APIRouter()
 
@@ -199,3 +202,67 @@ async def upload_receipt(file: UploadFile = File(...)):
     except Exception as e:
         print(f"Error in upload_receipt: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload receipt: {str(e)}")
+
+class ReimbursementSubmit(BaseModel):
+    volunteer_name: str
+    volunteer_usn: str
+    volunteer_mobile: str
+    item_description: str
+    amount: float
+    tx_id: str
+    receipt_url: str
+
+@router.post("/reimbursements")
+async def submit_reimbursement(
+    reimbursement: ReimbursementSubmit,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db = get_firestore_client()
+        data = reimbursement.dict()
+        data["status"] = "pending"
+        data["created_at"] = firestore.SERVER_TIMESTAMP
+        data["user_id"] = current_user.get("uid", "anonymous")
+        
+        doc_ref = db.collection("reimbursements").document()
+        doc_ref.set(data)
+        
+        return {"message": "Reimbursement submitted successfully", "id": doc_ref.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit reimbursement: {str(e)}")
+
+@router.get("/reimbursements")
+async def get_reimbursements(
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db = get_firestore_client()
+        docs = db.collection("reimbursements").order_by("created_at", direction=firestore.Query.DESCENDING).stream()
+        
+        reims = []
+        for doc in docs:
+            data = doc.to_dict()
+            if "created_at" in data:
+                data.pop("created_at")
+            reims.append({**data, "id": doc.id})
+            
+        return reims
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch reimbursements: {str(e)}")
+
+class ReimbursementStatusUpdate(BaseModel):
+    status: str
+
+@router.put("/reimbursements/{reimbursement_id}")
+async def update_reimbursement_status(
+    reimbursement_id: str,
+    update: ReimbursementStatusUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db = get_firestore_client()
+        doc_ref = db.collection("reimbursements").document(reimbursement_id)
+        doc_ref.update({"status": update.status})
+        return {"message": "Status updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update reimbursement: {str(e)}")

@@ -37,6 +37,7 @@ import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, where, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { fetchApi } from '@/lib/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#a05195', '#f95d6a'];
 
@@ -56,62 +57,61 @@ export default function FinanceDashboard() {
     });
 
     const [reimbursements, setReimbursements] = useState<any[]>([]);
+    const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
 
-    // Real-time synchronization for reimbursements
+    // Secure fetch for reimbursements and winners using backend API
     useEffect(() => {
-        // 1. Listen to the dedicated 'reimbursements' collection (volunteers)
-        const qExp = query(collection(db, "reimbursements"), orderBy("created_at", "desc"));
-        const unsubExp = onSnapshot(qExp, (snapshot) => {
-            const volunteerExp = snapshot.docs.map(doc => ({
-                id: doc.id,
-                name: doc.data().volunteer_name,
-                usn: doc.data().volunteer_usn,
-                mobile: doc.data().volunteer_mobile,
-                amount: doc.data().amount,
-                description: doc.data().item_description,
-                status: doc.data().status.charAt(0).toUpperCase() + doc.data().status.slice(1), // Capitalize
-                receipt_url: doc.data().receipt_url,
-                type: 'volunteer'
-            }));
-            
-            // Combine with winners (fetched below)
-            setReimbursements(prev => {
-                const winners = prev.filter(r => r.type === 'winner');
-                return [...volunteerExp, ...winners];
-            });
-        });
+        const fetchAllData = async () => {
+            try {
+                // 1. Fetch volunteers via secure backend
+                const volunteerData = await fetchApi("/api/finance/reimbursements");
+                const volunteerExp = volunteerData.map((data: any) => ({
+                    id: data.id,
+                    name: data.volunteer_name,
+                    usn: data.volunteer_usn,
+                    mobile: data.volunteer_mobile,
+                    amount: data.amount,
+                    description: data.item_description,
+                    status: data.status ? data.status.charAt(0).toUpperCase() + data.status.slice(1) : "Pending",
+                    receipt_url: data.receipt_url,
+                    type: 'volunteer'
+                }));
 
-        // 2. Listen to winners from 'users' collection
-        const qWin = query(collection(db, "users"), where("role", "==", "winner"));
-        const unsubWin = onSnapshot(qWin, (snapshot) => {
-            const winners = snapshot.docs.map(doc => ({
-                id: doc.id,
-                name: doc.data().display_name,
-                usn: doc.data().usn || 'N/A',
-                mobile: doc.data().mobile || 'N/A',
-                amount: 25000, // Standard prize for now, mapping could be more complex
-                description: `${doc.data().track || 'General'} Track 1st Prize`,
-                status: 'Pending', // Default for winners unless we add a payout field
-                type: 'winner'
-            }));
+                // 2. Fetch winners via secure backend
+                const winnerData = await fetchApi("/api/admin/users?role=winner");
+                const winners = winnerData.map((data: any) => ({
+                    id: data.uid,
+                    name: data.display_name,
+                    usn: data.usn || 'N/A',
+                    mobile: data.mobile || 'N/A',
+                    amount: 25000, 
+                    description: `${data.track || 'General'} Track 1st Prize`,
+                    status: 'Pending', 
+                    type: 'winner'
+                }));
 
-            setReimbursements(prev => {
-                const volunteers = prev.filter(r => r.type === 'volunteer');
-                return [...volunteers, ...winners];
-            });
-        });
-
-        return () => {
-            unsubExp();
-            unsubWin();
+                setReimbursements([...volunteerExp, ...winners]);
+            } catch (error) {
+                console.error("Error fetching financial data:", error);
+                toast.error("Failed to load reimbursements. Please refresh.");
+            }
         };
+
+        fetchAllData();
+        // Optional: Set an interval to poll if real-time is strictly required
+        // const interval = setInterval(fetchAllData, 30000);
+        // return () => clearInterval(interval);
     }, []);
 
     const updateReimbursementStatus = async (id: string, newStatus: string, type: string) => {
         try {
             if (type === 'volunteer') {
-                const docRef = doc(db, "reimbursements", id);
-                await updateDoc(docRef, { status: newStatus.toLowerCase() });
+                await fetchApi(`/api/finance/reimbursements/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ status: newStatus.toLowerCase() })
+                });
+                
+                setReimbursements(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
                 toast.success(`Updated status to ${newStatus}`);
             } else {
                 toast.info("Winner prize status tracking to be integrated with Payouts API.");
@@ -223,7 +223,7 @@ export default function FinanceDashboard() {
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
@@ -242,16 +242,6 @@ export default function FinanceDashboard() {
                     <CardContent>
                         <div className="text-2xl font-bold">₹{totalSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <p className="text-xs text-muted-foreground">{((totalSpent / 1000000) * 100).toFixed(1)}% of total budget</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-                        <Receipt className="h-4 w-4 text-amber-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{pendingCount}</div>
-                        <p className="text-xs text-muted-foreground">Totalling ₹{pendingTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -461,7 +451,7 @@ export default function FinanceDashboard() {
                                 <CardContent>
                                     <div className="flex flex-col gap-2 mt-2">
                                         {reimb.receipt_url && (
-                                            <Button variant="link" className="h-4 p-0 text-xs justify-start text-blue-600" onClick={() => window.open(reimb.receipt_url, '_blank')}>
+                                            <Button variant="link" className="h-4 p-0 text-xs justify-start text-blue-600" onClick={() => setReceiptPreview(reimb.receipt_url)}>
                                                 <Camera className="mr-1 h-3 w-3" /> View Receipt Screenshot
                                             </Button>
                                         )}
@@ -494,6 +484,21 @@ export default function FinanceDashboard() {
                 </TabsContent>
 
             </Tabs>
+
+            {/* Receipt Preview Modal */}
+            <Dialog open={!!receiptPreview} onOpenChange={() => setReceiptPreview(null)}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Receipt Screenshot</DialogTitle>
+                        <DialogDescription>Uploaded proof of payment</DialogDescription>
+                    </DialogHeader>
+                    {receiptPreview && (
+                        <div className="flex justify-center">
+                            <img src={receiptPreview} alt="Receipt" className="max-h-[70vh] object-contain rounded-md border" />
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

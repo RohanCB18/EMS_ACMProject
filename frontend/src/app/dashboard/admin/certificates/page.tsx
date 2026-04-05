@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner"
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { fetchApi } from '@/lib/api';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -68,26 +69,24 @@ export default function AutomationDashboard() {
     const fetchUsersFromDb = async () => {
         setIsFetchingUsers(true);
         try {
-            const usersRef = collection(db, "users");
-            let q;
+            let roleQuery = "";
             if (targetSegment === "all") {
-                q = query(usersRef, where("role", "==", "participant"));
+                roleQuery = "?role=participant";
             } else if (targetSegment === "winners") {
-                q = query(usersRef, where("role", "==", "winner"));
+                roleQuery = "?role=winner";
             } else {
                 toast.error("Invalid segment selected");
                 setIsFetchingUsers(false);
                 return;
             }
 
-            const querySnapshot = await getDocs(q);
+            const querySnapshot: any[] = await fetchApi(`/api/admin/users${roleQuery}`);
             const fetchedRecipients: Recipient[] = [];
             
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
+            querySnapshot.forEach((data) => {
                 if (data.email && data.display_name) {
                     fetchedRecipients.push({
-                        id: doc.id,
+                        id: data.uid,
                         name: data.display_name,
                         email: data.email,
                         role: data.role === "winner" ? "Winner" : "Participant",
@@ -114,12 +113,9 @@ export default function AutomationDashboard() {
         }
         setIsFetchingEmails(true);
         try {
-            const usersRef = collection(db, "users");
-            const q = query(usersRef, where("role", "==", role));
-            const querySnapshot = await getDocs(q);
+            const querySnapshot: any[] = await fetchApi(`/api/admin/users?role=${role}`);
             const emails: string[] = [];
-            querySnapshot.forEach((doc) => {
-                const data = doc.data();
+            querySnapshot.forEach((data) => {
                 if (data.email) emails.push(data.email);
             });
             
@@ -314,39 +310,7 @@ export default function AutomationDashboard() {
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Emails Sent</CardTitle>
-                        <Send className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">1,240</div>
-                        <p className="text-xs text-muted-foreground">+180 this week</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Certificates Generated</CardTitle>
-                        <FileBadge className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">542</div>
-                        <p className="text-xs text-muted-foreground">Across 3 Tracks</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Feedback Collected</CardTitle>
-                        <CopyCheck className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">384</div>
-                        <p className="text-xs text-muted-foreground">70.8% response rate</p>
-                    </CardContent>
-                </Card>
-            </div>
+
 
             <Tabs defaultValue="certificates" onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-3">
