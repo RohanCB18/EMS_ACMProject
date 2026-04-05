@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from ..models import AnalyticsOverview, UserRole
 from ..middleware import role_required
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 import csv
 import io
 
@@ -20,32 +21,54 @@ async def get_overview_stats(
     """Get aggregated statistics for the admin dashboard."""
     db = get_firestore_client()
 
-    try:
-        total_users = db.collection("users").count().get()[0][0].value
-        total_teams = db.collection("teams").count().get()[0][0].value
-        total_resolved_tickets = db.collection("tickets").where("status", "==", "resolved").count().get()[0][0].value
-        
-        # Real project count: sum of projects collection + teams used as fallback
-        projects_count = db.collection("projects").count().get()[0][0].value
-        if projects_count == 0:
-            # If no projects, the judging system uses teams
-            projects_count = total_teams
+    cache = get_kafka_cache()
+    cache_key = "analytics:overview"
 
-        present_count = db.collection("attendance").where("status", "==", "present").count().get()[0][0].value
-        attendance_rate = (present_count / total_users * 100) if total_users > 0 else 0.0
-    except Exception:
-        total_users, total_teams, total_resolved_tickets, attendance_rate, projects_count = 0, 0, 0, 0, 0
+    def loader():
+        try:
+            total_users = db.collection("users").count().get()[0][0].value
+            total_teams = db.collection("teams").count().get()[0][0].value
+            total_resolved_tickets = db.collection("tickets").where("status", "==", "resolved").count().get()[0][0].value
+            
+            # Real project count: sum of projects collection + teams used as fallback
+            projects_count = db.collection("projects").count().get()[0][0].value
+            if projects_count == 0:
+                # If no projects, the judging system uses teams
+                projects_count = total_teams
 
-    # Build top tracks from tracks collection
-    top_tracks = []
-    try:
-        tracks_docs = db.collection("tracks").stream()
-        for doc in tracks_docs:
-            data = doc.to_dict()
-            top_tracks.append({"name": data.get("name", doc.id), "count": data.get("enrolled_teams", 0)})
-        top_tracks.sort(key=lambda t: t["count"], reverse=True)
-    except Exception:
+            present_count = db.collection("attendance").where("status", "==", "present").count().get()[0][0].value
+            attendance_rate = (present_count / total_users * 100) if total_users > 0 else 0.0
+        except Exception:
+            total_users, total_teams, total_resolved_tickets, attendance_rate, projects_count = 0, 0, 0, 0, 0
+
+        # Build top tracks from tracks collection
         top_tracks = []
+        try:
+            tracks_docs = db.collection("tracks").stream()
+            for doc in tracks_docs:
+                data = doc.to_dict()
+                top_tracks.append({"name": data.get("name", doc.id), "count": data.get("enrolled_teams", 0)})
+            top_tracks.sort(key=lambda t: t["count"], reverse=True)
+        except Exception:
+            top_tracks = []
+
+        return {
+            "total_users": total_users,
+            "total_teams": total_teams,
+            "total_resolved_tickets": total_resolved_tickets,
+            "attendance_rate": attendance_rate,
+            "projects_count": projects_count,
+            "top_tracks": top_tracks,
+        }
+
+    result = cache.get(cache_key, loader, ttl_secs=15)
+
+    total_users = result["total_users"]
+    total_teams = result["total_teams"]
+    total_resolved_tickets = result["total_resolved_tickets"]
+    attendance_rate = result["attendance_rate"]
+    projects_count = result["projects_count"]
+    top_tracks = result["top_tracks"]
 
     return AnalyticsOverview(
         total_registrations=total_users,

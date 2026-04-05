@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.middleware import require_role
 from app.models import (
     RankingResponse,
@@ -123,8 +124,13 @@ async def get_rankings(
 ):
     """Get aggregated rankings for an event."""
     db = get_firestore_client()
-    rankings = _aggregate_rankings(db, event_id, round.value)
+    cache = get_kafka_cache()
+    cache_key = f"rankings:event:{event_id}:round:{round.value}"
 
+    def loader():
+        return _aggregate_rankings(db, event_id, round.value)
+
+    rankings = cache.get(cache_key, loader, ttl_secs=15)
     evaluated_count = sum(1 for r in rankings if r.total_evaluations > 0)
 
     return RankingResponse(
@@ -166,6 +172,7 @@ async def shortlist_projects(
 
     doc_ref = db.collection("shortlists").document()
     doc_ref.set(shortlist_data)
+    get_kafka_cache().invalidate_prefix("rankings:")
 
     logger.info(
         f"Shortlisted {len(body.project_ids)} projects from {body.round.value} "
@@ -187,8 +194,13 @@ async def export_winners(
 ):
     """Export the top N ranked projects as a winner list."""
     db = get_firestore_client()
-    rankings = _aggregate_rankings(db, event_id, round.value)
+    cache = get_kafka_cache()
+    cache_key = f"rankings:event:{event_id}:round:{round.value}"
 
+    def loader():
+        return _aggregate_rankings(db, event_id, round.value)
+
+    rankings = cache.get(cache_key, loader, ttl_secs=15)
     winners = rankings[:top_n]
 
     return {

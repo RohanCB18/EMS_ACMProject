@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from firebase_admin.firestore import SERVER_TIMESTAMP
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.models import UserProfileCreate, UserProfileResponse
 from app.middleware import get_current_user, require_role
 
@@ -50,6 +51,7 @@ async def verify_token(user: dict = Depends(get_current_user)):
                 if len(list(judges_ref)) > 0:
                     profile["role"] = "judge"
                     db.collection("users").document(user["uid"]).update({"role": "judge"})
+                    get_kafka_cache().invalidate(f"auth:user:{user['uid']}")
 
         return {
             "valid": True,
@@ -116,6 +118,7 @@ async def create_user_profile(
 
     # Set (create or overwrite) the user document
     users_ref.document(profile.uid).set(profile_data, merge=True)
+    get_kafka_cache().invalidate(f"auth:user:{profile.uid}")
 
     return UserProfileResponse(
         uid=profile.uid,
@@ -134,13 +137,18 @@ async def get_user_profile(uid: str, current_user: dict = Depends(get_current_us
     Retrieve a user profile from Firestore by UID.
     Protected: Any authenticated user can view basic profiles (e.g., for team info).
     """
-    db = get_firestore_client()
-    doc = db.collection("users").document(uid).get()
+    cache = get_kafka_cache()
+    cache_key = f"auth:user:{uid}"
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="User profile not found")
+    def loader():
+        doc = db.collection("users").document(uid).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="User profile not found")
+        data = doc.to_dict()
+        return data
 
-    data = doc.to_dict()
+    data = cache.get(cache_key, loader, ttl_secs=15)
+
     return UserProfileResponse(
         uid=data.get("uid", uid),
         email=data.get("email", ""),
@@ -175,4 +183,5 @@ async def update_user_role(
         raise HTTPException(status_code=404, detail="User profile not found")
 
     doc_ref.update({"role": role})
+    get_kafka_cache().invalidate(f"auth:user:{uid}")
     return {"message": f"Role updated to {role}", "uid": uid}

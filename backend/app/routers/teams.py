@@ -15,6 +15,7 @@ from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 from datetime import datetime
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.models import (
     TeamCreate,
     TeamResponse,
@@ -25,6 +26,7 @@ from app.models import (
 from app.middleware import get_current_user_profile, require_role
 
 router = APIRouter()
+cache = get_kafka_cache()
 
 
 def _generate_invite_code(length: int = 6) -> str:
@@ -85,23 +87,23 @@ async def list_all_teams(
     admin: dict = Depends(require_role("admin", "super_admin", "organizer"))
 ):
     """List all teams (Admin only)."""
+    cache_key = "teams:admin:all"
     db = get_firestore_client()
-    docs = db.collection("teams").get()
-    
-    teams = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["team_id"] = doc.id
-        
-        # Handle Firestore Timestamp to string conversion
-        if "created_at" in data and hasattr(data["created_at"], "isoformat"):
-            data["created_at"] = data["created_at"].isoformat()
-            
-        # Member details for UI display
-        data["member_details"] = _get_member_details(db, data.get("members", []))
-        teams.append(TeamResponse(**data))
-    
-    return teams
+
+    def loader() -> list[dict]:
+        docs = db.collection("teams").get()
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["team_id"] = doc.id
+            if "created_at" in data and hasattr(data["created_at"], "isoformat"):
+                data["created_at"] = data["created_at"].isoformat()
+            data["member_details"] = _get_member_details(db, data.get("members", []))
+            results.append(data)
+        return results
+
+    teams = cache.get(cache_key, loader, ttl_secs=10)
+    return [TeamResponse(**data) for data in teams]
 
 
 @router.post("/create", response_model=TeamResponse)
@@ -168,6 +170,7 @@ async def create_team(
         return team_ref.id
 
     team_id = create_in_transaction(transaction, user_ref, team_ref)
+    cache.invalidate_prefix("teams:")
 
     return TeamResponse(
         team_id=team_id,
@@ -256,6 +259,7 @@ async def join_team(
         return team_data, members
 
     team_data, updated_members = join_in_transaction(transaction, user_ref, team_ref)
+    cache.invalidate_prefix("teams:")
     member_details = _get_member_details(db, updated_members)
 
     return TeamResponse(
@@ -321,38 +325,30 @@ async def leave_team(
         transaction.update(user_ref, {"team_id": None})
 
     leave_in_transaction(transaction, user_ref, team_ref)
+    cache.invalidate_prefix("teams:")
     return {"message": "Successfully left the team"}
 
 
 @router.get("/{team_id}", response_model=TeamResponse)
 async def get_team(team_id: str, _: dict = Depends(get_current_user_profile)):
     """Get team details (Protected)."""
+    cache_key = f"teams:team:{team_id}"
     db = get_firestore_client()
-    doc = db.collection("teams").document(team_id).get()
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Team not found")
+    def loader() -> dict:
+        doc = db.collection("teams").document(team_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Team not found")
+        data = doc.to_dict()
+        data["team_id"] = team_id
+        members = data.get("members", [])
+        data["member_details"] = _get_member_details(db, members)
+        data["lock_deadline"] = str(data.get("lock_deadline", "")) if data.get("lock_deadline") else None
+        data["created_at"] = str(data.get("created_at", ""))
+        return data
 
-    data = doc.to_dict()
-    members = data.get("members", [])
-    member_details = _get_member_details(db, members)
-
-    return TeamResponse(
-        team_id=team_id,
-        name=data["name"],
-        invite_code=data["invite_code"],
-        track=data["track"],
-        created_by=data["created_by"],
-        members=members,
-        member_details=member_details,
-        looking_for=data.get("looking_for"),
-        description=data.get("description"),
-        max_size=data.get("max_size", 4),
-        min_size=data.get("min_size", 2),
-        locked=data.get("locked", False),
-        lock_deadline=str(data.get("lock_deadline", "")) if data.get("lock_deadline") else None,
-        created_at=str(data.get("created_at", "")),
-    )
+    data = cache.get(cache_key, loader, ttl_secs=10)
+    return TeamResponse(**data)
 
 
 @router.get("/my-team/{uid}")
@@ -414,6 +410,7 @@ async def lock_team(
         update_data["lock_deadline"] = request.lock_deadline
 
     team_ref.update(update_data)
+    cache.invalidate_prefix("teams:")
     return {"message": "Team has been locked", "team_id": team_id}
 
 
@@ -431,33 +428,37 @@ async def unlock_team(
         raise HTTPException(status_code=404, detail="Team not found")
 
     team_ref.update({"locked": False, "lock_deadline": None})
+    cache.invalidate_prefix("teams:")
     return {"message": "Team has been unlocked", "team_id": team_id}
 
 
 @router.get("/browse/open")
 async def browse_open_teams(_: dict = Depends(get_current_user_profile)):
     """Browse open teams (Protected)."""
+    cache_key = "teams:browse:open"
     db = get_firestore_client()
-    teams = db.collection("teams").where("locked", "==", False).get()
 
-    open_teams = []
-    for doc in teams:
-        data = doc.to_dict()
-        members = data.get("members", [])
-        max_size = data.get("max_size", 4)
+    def loader() -> dict:
+        teams = db.collection("teams").where("locked", "==", False).get()
+        open_teams = []
+        for doc in teams:
+            data = doc.to_dict()
+            members = data.get("members", [])
+            max_size = data.get("max_size", 4)
 
-        if len(members) < max_size:
-            member_details = _get_member_details(db, members)
-            open_teams.append({
-                "team_id": doc.id,
-                "name": data["name"],
-                "track": data.get("track", ""),
-                "members_count": len(members),
-                "max_size": max_size,
-                "member_details": member_details,
-                "looking_for": data.get("looking_for"),
-                "description": data.get("description"),
-                "created_at": str(data.get("created_at", "")),
-            })
+            if len(members) < max_size:
+                member_details = _get_member_details(db, members)
+                open_teams.append({
+                    "team_id": doc.id,
+                    "name": data["name"],
+                    "track": data.get("track", ""),
+                    "members_count": len(members),
+                    "max_size": max_size,
+                    "member_details": member_details,
+                    "looking_for": data.get("looking_for"),
+                    "description": data.get("description"),
+                    "created_at": str(data.get("created_at", "")),
+                })
+        return {"teams": open_teams, "count": len(open_teams)}
 
-    return {"teams": open_teams, "count": len(open_teams)}
+    return cache.get(cache_key, loader, ttl_secs=8)

@@ -85,8 +85,15 @@ def verify_firebase_token(id_token: str) -> dict:
         auth.InvalidIdTokenError: If the token is invalid or expired.
     """
     _initialize_firebase()
-    decoded_token = auth.verify_id_token(id_token)
-    return decoded_token
+    try:
+        return auth.verify_id_token(id_token)
+    except Exception as e:
+        # Handle "Token used too early" (clock skew between client/server)
+        if "Token used too early" in str(e):
+            import time
+            time.sleep(2)
+            return auth.verify_id_token(id_token)
+        raise e
 
 
 def get_user_by_uid(uid: str):

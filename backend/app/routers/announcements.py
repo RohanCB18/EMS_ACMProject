@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.core.firebase_config import get_firestore_client as get_db
+from app.core.kafka_cache import get_kafka_cache
 
 router = APIRouter()
 
@@ -38,6 +39,16 @@ def announcement_to_dict(doc) -> dict:
     return data
 
 
+def load_all_announcements() -> list[dict]:
+    db = get_db()
+    docs = (
+        db.collection("announcements")
+        .order_by("timestamp", direction="DESCENDING")
+        .stream()
+    )
+    return [announcement_to_dict(d) for d in docs]
+
+
 # ──────────────────────────────────────────────
 # Models
 # ──────────────────────────────────────────────
@@ -61,13 +72,8 @@ def get_announcements(
     If `track` is provided, returns announcements targeting 'all' OR the given track.
     """
     try:
-        db = get_db()
-        docs = (
-            db.collection("announcements")
-            .order_by("timestamp", direction="DESCENDING")
-            .stream()
-        )
-        results = [announcement_to_dict(d) for d in docs]
+        cache = get_kafka_cache()
+        results = cache.get("announcements:all", load_all_announcements, ttl_secs=20)
 
         if track:
             results = [
@@ -105,6 +111,7 @@ def create_announcement(
             "timestamp": SERVER_TIMESTAMP,
         })
         created = doc_ref.get()
+        get_kafka_cache().invalidate("announcements:all")
         return announcement_to_dict(created)
 
     except FileNotFoundError as e:
@@ -125,6 +132,7 @@ def delete_announcement(
         if not ref.get().exists:
             raise HTTPException(status_code=404, detail="Announcement not found.")
         ref.delete()
+        get_kafka_cache().invalidate("announcements:all")
         return {"message": f"Announcement '{announcement_id}' deleted successfully."}
     except HTTPException:
         raise

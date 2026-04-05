@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.middleware import get_current_user, require_role
 from app.models import JudgeInvite, JudgeProfileUpdate, JudgeCoiFlag, JudgeResponse
 
@@ -51,6 +52,7 @@ async def invite_judge(
 
     doc_ref = db.collection("judges").document()
     doc_ref.set(judge_data)
+    get_kafka_cache().invalidate_prefix("judges:")
 
     logger.info(f"Judge invited: {body.email} by admin {admin.get('uid')}")
 
@@ -63,18 +65,21 @@ async def list_judges(
 ):
     """List all judges."""
     db = get_firestore_client()
-    docs = db.collection("judges").order_by("created_at").get()
+    cache = get_kafka_cache()
+    cache_key = "judges:all"
 
-    judges = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["judge_id"] = doc.id
-        # Handle Firestore Timestamp to string conversion
-        if "created_at" in data and hasattr(data["created_at"], "isoformat"):
-            data["created_at"] = data["created_at"].isoformat()
-        judges.append(JudgeResponse(**data))
+    def loader():
+        docs = db.collection("judges").order_by("created_at").get()
+        judges = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["judge_id"] = doc.id
+            if "created_at" in data and hasattr(data["created_at"], "isoformat"):
+                data["created_at"] = data["created_at"].isoformat()
+            judges.append(JudgeResponse(**data))
+        return judges
 
-    return judges
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 
 @router.get("/{judge_id}", response_model=JudgeResponse)
@@ -89,9 +94,15 @@ async def get_judge(
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Judge not found")
 
-    data = doc.to_dict()
-    data["judge_id"] = doc.id
-    return JudgeResponse(**data)
+    cache = get_kafka_cache()
+    cache_key = f"judges:{judge_id}"
+
+    def loader():
+        data = doc.to_dict()
+        data["judge_id"] = doc.id
+        return JudgeResponse(**data)
+
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 
 @router.put("/{judge_id}", response_model=JudgeResponse)
@@ -114,6 +125,7 @@ async def update_judge(
 
     updated = doc_ref.get().to_dict()
     updated["judge_id"] = judge_id
+    get_kafka_cache().invalidate_prefix("judges:")
     return JudgeResponse(**updated)
 
 
@@ -140,6 +152,7 @@ async def flag_coi(
         "flagged_by": admin.get("uid", "unknown"),
     })
     doc_ref.update({"coi_flags": coi_flags})
+    get_kafka_cache().invalidate_prefix("judges:")
 
     logger.info(f"COI flagged for judge {judge_id} on project {body.project_id}")
     return {"message": "Conflict of interest flagged", "judge_id": judge_id}
@@ -158,5 +171,6 @@ async def remove_judge(
         raise HTTPException(status_code=404, detail="Judge not found")
 
     db.collection("judges").document(judge_id).delete()
+    get_kafka_cache().invalidate_prefix("judges:")
     logger.info(f"Judge {judge_id} removed by admin {admin.get('uid')}")
     return {"message": "Judge removed", "judge_id": judge_id}

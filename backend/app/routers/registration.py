@@ -14,6 +14,7 @@ from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 from datetime import datetime
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.models import (
     FormSchemaCreate,
     FormSchemaResponse,
@@ -67,6 +68,7 @@ async def save_form_schema(
         schema_doc["created_at"] = SERVER_TIMESTAMP
         doc_ref.set(schema_doc)
 
+    get_kafka_cache().invalidate_prefix("registration:")
     return FormSchemaResponse(
         event_id=schema.event_id,
         form_title=schema.form_title,
@@ -84,15 +86,19 @@ async def get_form_schema(
     Protected: Any authenticated user can view schemas to register.
     """
     db = get_firestore_client()
-    doc = db.collection("events").document(event_id).get()
+    cache = get_kafka_cache()
+    cache_key = f"registration:schema:{event_id}"
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Event or form schema not found")
+    def loader():
+        doc = db.collection("events").document(event_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Event or form schema not found")
+        data = doc.to_dict()
+        if "fields" not in data:
+            raise HTTPException(status_code=404, detail="No form schema defined for this event")
+        return data
 
-    data = doc.to_dict()
-    if "fields" not in data:
-        raise HTTPException(status_code=404, detail="No form schema defined for this event")
-
+    data = cache.get(cache_key, loader, ttl_secs=30)
     return FormSchemaResponse(
         event_id=event_id,
         form_title=data.get("form_title", "Registration Form"),
@@ -110,20 +116,24 @@ async def list_form_schemas(
     List all events that have a form schema defined. (Admin only)
     """
     db = get_firestore_client()
-    events = db.collection("events").get()
+    cache = get_kafka_cache()
+    cache_key = "registration:schemas"
 
-    results = []
-    for doc in events:
-        data = doc.to_dict()
-        if "fields" in data:
-            results.append({
-                "event_id": doc.id,
-                "form_title": data.get("form_title", "Untitled"),
-                "field_count": len(data.get("fields", [])),
-                "updated_at": str(data.get("updated_at", "")),
-            })
+    def loader():
+        events = db.collection("events").get()
+        results = []
+        for doc in events:
+            data = doc.to_dict()
+            if "fields" in data:
+                results.append({
+                    "event_id": doc.id,
+                    "form_title": data.get("form_title", "Untitled"),
+                    "field_count": len(data.get("fields", [])),
+                    "updated_at": str(data.get("updated_at", "")),
+                })
+        return {"schemas": results}
 
-    return {"schemas": results}
+    return cache.get(cache_key, loader, ttl_secs=30)
 
 
 # ──────────────────────────────────────────────
@@ -189,6 +199,7 @@ async def submit_registration(
     }
 
     db.collection("registrations").document(submission.uid).set(reg_data)
+    get_kafka_cache().invalidate_prefix("registration:")
 
     return RegistrationResponse(
         uid=submission.uid,

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.kafka_cache import initialize_kafka_cache, shutdown_kafka_cache
 from app.routers import (
     auth, teams, registration,
     finance, automation,
@@ -49,6 +50,16 @@ app.include_router(sponsors.router, prefix="/api/sponsors", tags=["Sponsors"])
 app.include_router(admin.router, prefix="/api", tags=["Admin"])
 app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
 
+@app.on_event("startup")
+def startup_event():
+    initialize_kafka_cache()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    shutdown_kafka_cache()
+
+
 @app.get("/")
 def root():
     return {
@@ -57,6 +68,7 @@ def root():
         "docs": "http://localhost:8000/docs",
         "health": "http://localhost:8000/health",
     }
+
 
 @app.get("/health")
 def health_check():

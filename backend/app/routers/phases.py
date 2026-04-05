@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from typing import Optional
 from app.core.firebase_config import get_firestore_client as get_db
+from app.core.kafka_cache import get_kafka_cache
 
 router = APIRouter()
 
@@ -71,8 +72,14 @@ def get_all_phases():
     """Return all phases ordered by their `order` field."""
     try:
         db = get_db()
-        docs = db.collection("phases").order_by("order").stream()
-        return [phase_doc_to_dict(doc) for doc in docs]
+        cache = get_kafka_cache()
+        cache_key = "phases:all"
+
+        def loader():
+            docs = db.collection("phases").order_by("order").stream()
+            return [phase_doc_to_dict(doc) for doc in docs]
+
+        return cache.get(cache_key, loader, ttl_secs=15)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -84,11 +91,17 @@ def get_current_phase():
     """Return the currently active phase."""
     try:
         db = get_db()
-        docs = db.collection("phases").where("isActive", "==", True).limit(1).stream()
-        phases = [phase_doc_to_dict(doc) for doc in docs]
-        if not phases:
-            return {"message": "No active phase set.", "phase": None}
-        return phases[0]
+        cache = get_kafka_cache()
+        cache_key = "phases:current"
+
+        def loader():
+            docs = db.collection("phases").where("isActive", "==", True).limit(1).stream()
+            phases = [phase_doc_to_dict(doc) for doc in docs]
+            if not phases:
+                return {"message": "No active phase set.", "phase": None}
+            return phases[0]
+
+        return cache.get(cache_key, loader, ttl_secs=10)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -120,6 +133,7 @@ def set_active_phase(
             raise HTTPException(status_code=404, detail=f"Phase '{request.phaseId}' not found.")
 
         phase_ref.update({"isActive": True})
+        get_kafka_cache().invalidate_prefix("phases:")
 
         updated = phase_ref.get()
         return {"message": "Phase activated successfully.", "phase": phase_doc_to_dict(updated)}
@@ -146,6 +160,7 @@ def update_feature_flags(
 
         if request.featureFlags:
             phase_ref.update({"featureFlags": request.featureFlags.model_dump()})
+        get_kafka_cache().invalidate_prefix("phases:")
 
         updated = phase_ref.get()
         return {"message": "Feature flags updated.", "phase": phase_doc_to_dict(updated)}
@@ -192,6 +207,7 @@ def create_phase(
             "isActive": False,
             "featureFlags": flags,
         })
+        get_kafka_cache().invalidate_prefix("phases:")
         created = doc_ref.get()
         return phase_doc_to_dict(created)
 
@@ -215,6 +231,7 @@ def delete_phase(
         if not ref.get().exists:
             raise HTTPException(status_code=404, detail="Phase not found.")
         ref.delete()
+        get_kafka_cache().invalidate_prefix("phases:")
         return {"message": f"Phase '{phase_id}' deleted successfully."}
     except HTTPException:
         raise

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from ..models import AttendanceRecord, CheckInRequest, QRBlastRequest, UserRole, AttendanceStatus
 from ..middleware import role_required, get_current_user
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from datetime import datetime, timedelta
 import qrcode
 import io
@@ -57,6 +58,7 @@ async def check_in(
     )
 
     db.collection("attendance").document(f"{uid}_{request.phase_id}").set(new_record.dict())
+    get_kafka_cache().invalidate(f"attendance:stats:{request.phase_id}")
     return new_record
 
 
@@ -67,15 +69,15 @@ async def get_attendance_stats(
 ):
     """Get attendance statistics for a specific phase."""
     db = get_firestore_client()
-    docs = db.collection("attendance").where("phase_id", "==", phase_id).stream()
+    cache = get_kafka_cache()
+    cache_key = f"attendance:stats:{phase_id}"
 
-    total_present = 0
-    records = []
-    for doc in docs:
-        total_present += 1
-        records.append(doc.to_dict())
+    def loader():
+        docs = db.collection("attendance").where("phase_id", "==", phase_id).stream()
+        records = [doc.to_dict() for doc in docs]
+        return {"phase_id": phase_id, "total_present": len(records), "records": records}
 
-    return {"phase_id": phase_id, "total_present": total_present, "records": records}
+    return cache.get(cache_key, loader, ttl_secs=10)
 
 
 def _generate_qr_base64(data: str, box_size: int = 6) -> str:

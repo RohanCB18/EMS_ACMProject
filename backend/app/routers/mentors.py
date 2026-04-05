@@ -2,6 +2,7 @@
 from ..models import MentorProfile, SlotBookingRequest, UserRole, MentorSlot
 from ..middleware import role_required, get_current_user
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from datetime import datetime
 import uuid
 
@@ -11,8 +12,14 @@ router = APIRouter(prefix="/mentors", tags=["Mentors"])
 async def list_mentors():
     """List all available mentors and their profiles."""
     db = get_firestore_client()
-    docs = db.collection("mentors").stream()
-    return [MentorProfile(**doc.to_dict()) for doc in docs]
+    cache = get_kafka_cache()
+    cache_key = "mentors:all"
+
+    def loader():
+        docs = db.collection("mentors").stream()
+        return [MentorProfile(**doc.to_dict()) for doc in docs]
+
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 @router.post("/book")
 async def book_slot(
@@ -54,6 +61,7 @@ async def book_slot(
         }
         transaction.set(session_ref, session_data)
         
+        get_kafka_cache().invalidate_prefix("mentors:")
         return {"message": "Slot booked successfully"}
 
     try:
@@ -75,6 +83,7 @@ async def create_mentor(
     if not profile.uid:
         profile.uid = str(uuid.uuid4())
     db.collection("mentors").document(profile.uid).set(profile.dict())
+    get_kafka_cache().invalidate_prefix("mentors:")
     return profile
 
 @router.delete("/{uid}")
@@ -88,6 +97,7 @@ async def delete_mentor(
     if not ref.get().exists:
         raise HTTPException(status_code=404, detail="Mentor not found")
     ref.delete()
+    get_kafka_cache().invalidate_prefix("mentors:")
     return {"message": "Mentor deleted"}
 
 @router.patch("/profile")
@@ -101,4 +111,5 @@ async def update_mentor_profile(
     
     db = get_firestore_client()
     db.collection("mentors").document(profile.uid).set(profile.dict(), merge=True)
+    get_kafka_cache().invalidate_prefix("mentors:")
     return {"message": "Profile updated"}

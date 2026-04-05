@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.middleware import require_role
 from app.models import RubricCreate, RubricResponse
 
 logger = logging.getLogger("ems.set_c.rubrics")
 router = APIRouter()
+cache = get_kafka_cache()
 
 
 def _validate_weights(criteria: list) -> float:
@@ -55,6 +57,7 @@ async def create_rubric(
 
     doc_ref = db.collection("rubrics").document()
     doc_ref.set(rubric_data)
+    cache.invalidate_prefix("rubrics:event:")
 
     logger.info(f"Rubric created: {body.name} for event {body.event_id}")
     return RubricResponse(rubric_id=doc_ref.id, **rubric_data)
@@ -67,19 +70,22 @@ async def get_rubrics(
 ):
     """Get all rubrics for an event."""
     db = get_firestore_client()
-    docs = db.collection("rubrics").where("event_id", "==", event_id).get()
+    cache_key = f"rubrics:event:{event_id}"
 
-    rubrics = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["rubric_id"] = doc.id
-        # Handle Firestore Timestamp to string conversion
-        for field in ["created_at", "updated_at"]:
-            if field in data and hasattr(data[field], "isoformat"):
-                data[field] = data[field].isoformat()
-        rubrics.append(RubricResponse(**data))
+    def loader() -> list[dict]:
+        docs = db.collection("rubrics").where("event_id", "==", event_id).get()
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["rubric_id"] = doc.id
+            for field in ["created_at", "updated_at"]:
+                if field in data and hasattr(data[field], "isoformat"):
+                    data[field] = data[field].isoformat()
+            results.append(data)
+        return results
 
-    return rubrics
+    rubrics = cache.get(cache_key, loader, ttl_secs=20)
+    return [RubricResponse(**data) for data in rubrics]
 
 
 @router.put("/{rubric_id}", response_model=RubricResponse)
@@ -106,6 +112,7 @@ async def update_rubric(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     doc_ref.update(updates)
+    cache.invalidate_prefix("rubrics:event:")
 
     updated = doc_ref.get().to_dict()
     updated["rubric_id"] = rubric_id
@@ -126,5 +133,6 @@ async def delete_rubric(
         raise HTTPException(status_code=404, detail="Rubric not found")
 
     db.collection("rubrics").document(rubric_id).delete()
+    cache.invalidate_prefix("rubrics:event:")
     logger.info(f"Rubric {rubric_id} deleted")
     return {"message": "Rubric deleted", "rubric_id": rubric_id}

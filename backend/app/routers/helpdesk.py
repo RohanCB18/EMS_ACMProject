@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..models import SupportTicket, TicketUpdate, UserRole, TicketStatus
 from ..middleware import role_required, get_current_user
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from datetime import datetime
 import uuid
 
@@ -19,6 +20,7 @@ async def create_ticket(
     ticket.raised_by_uid = current_user["uid"]
     
     db.collection("tickets").document(ticket_id).set(ticket.dict())
+    get_kafka_cache().invalidate_prefix("helpdesk:tickets")
     return ticket
 
 @router.get("/")
@@ -27,15 +29,18 @@ async def list_tickets(
 ):
     """List tickets (participants see their own, admins/volunteers see all)."""
     db = get_firestore_client()
+    cache = get_kafka_cache()
     role = current_user.get("role")
-    
-    if role in [UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.VOLUNTEER]:
-        query = db.collection("tickets")
-    else:
-        query = db.collection("tickets").where("raised_by_uid", "==", current_user["uid"])
-        
-    docs = query.stream()
-    return [doc.to_dict() for doc in docs]
+    cache_key = "helpdesk:tickets:all" if role in [UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.VOLUNTEER] else f"helpdesk:tickets:user:{current_user['uid']}"
+
+    def loader():
+        if role in [UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.VOLUNTEER]:
+            docs = db.collection("tickets").stream()
+        else:
+            docs = db.collection("tickets").where("raised_by_uid", "==", current_user["uid"]).stream()
+        return [doc.to_dict() for doc in docs]
+
+    return cache.get(cache_key, loader, ttl_secs=10)
 
 @router.patch("/{ticket_id}")
 async def update_ticket(
@@ -54,4 +59,5 @@ async def update_ticket(
     
     # Logic sanity: if resolved, ensure it stays resolved or moves back properly
     ticket_ref.update(update_data)
+    get_kafka_cache().invalidate_prefix("helpdesk:tickets")
     return {"message": "Ticket updated", "ticket_id": ticket_id}

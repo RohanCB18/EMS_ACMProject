@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..models import UserRoleUpdate, UserRole
 from ..middleware import role_required
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -24,6 +25,7 @@ async def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
 
     user_ref.update({"role": update.new_role.value})
+    get_kafka_cache().invalidate_prefix("admin:users")
     return {"message": f"User role updated to {update.new_role.value}"}
 
 
@@ -34,8 +36,14 @@ async def list_users_with_roles(
 ):
     """List all users with their current roles with an optional role filter."""
     db = get_firestore_client()
-    query = db.collection("users")
-    if role:
-        query = query.where("role", "==", role)
-    docs = query.stream()
-    return [{**doc.to_dict(), "uid": doc.id} for doc in docs]
+    cache = get_kafka_cache()
+    cache_key = f"admin:users" if not role else f"admin:users:role:{role}"
+
+    def loader():
+        query = db.collection("users")
+        if role:
+            query = query.where("role", "==", role)
+        docs = query.stream()
+        return [{**doc.to_dict(), "uid": doc.id} for doc in docs]
+
+    return cache.get(cache_key, loader, ttl_secs=15)

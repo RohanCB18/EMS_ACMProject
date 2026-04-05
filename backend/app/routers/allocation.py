@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.middleware import get_current_user, require_role
 from app.models import (
     AutoAllocateRequest,
@@ -154,6 +155,7 @@ async def auto_allocate(
                 "assigned_count": load_map[judge["id"]]
             })
 
+    get_kafka_cache().invalidate_prefix("allocations:")
     logger.info(f"Auto-allocation complete: {len(allocations_created)} assignments for event {body.event_id}")
 
     return {
@@ -178,6 +180,7 @@ async def override_allocation(
         if not doc.exists:
             raise HTTPException(status_code=404, detail="Allocation not found")
         db.collection("allocations").document(allocation_id).delete()
+        get_kafka_cache().invalidate_prefix("allocations:")
         data = doc.to_dict()
         data["allocation_id"] = doc.id
         return AllocationResponse(**data)
@@ -233,22 +236,25 @@ async def list_allocations(
 ):
     """List all allocations, optionally filtered by event and round."""
     db = get_firestore_client()
-    query = db.collection("allocations")
+    cache = get_kafka_cache()
+    cache_key = f"allocations:all:event:{event_id or 'any'}:round:{round.value if round else 'any'}"
 
-    if event_id:
-        query = query.where("event_id", "==", event_id)
-    if round:
-        query = query.where("round", "==", round.value)
+    def loader():
+        query = db.collection("allocations")
+        if event_id:
+            query = query.where("event_id", "==", event_id)
+        if round:
+            query = query.where("round", "==", round.value)
 
-    docs = query.get()
+        docs = query.get()
+        allocations = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["allocation_id"] = doc.id
+            allocations.append(AllocationResponse(**data))
+        return allocations
 
-    allocations = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["allocation_id"] = doc.id
-        allocations.append(AllocationResponse(**data))
-
-    return allocations
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 
 @router.get("/judge/{judge_id}", response_model=list[AllocationResponse])
@@ -258,12 +264,16 @@ async def get_judge_allocations(
 ):
     """Get all allocations for a specific judge."""
     db = get_firestore_client()
-    docs = db.collection("allocations").where("judge_id", "==", judge_id).get()
+    cache = get_kafka_cache()
+    cache_key = f"allocations:judge:{judge_id}"
 
-    allocations = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["allocation_id"] = doc.id
-        allocations.append(AllocationResponse(**data))
+    def loader():
+        docs = db.collection("allocations").where("judge_id", "==", judge_id).get()
+        allocations = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["allocation_id"] = doc.id
+            allocations.append(AllocationResponse(**data))
+        return allocations
 
-    return allocations
+    return cache.get(cache_key, loader, ttl_secs=15)

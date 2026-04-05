@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.firebase_config import get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from app.middleware import get_current_user, get_current_user_profile, require_role
 from app.models import ScoreSubmit, ScoreResponse
 
@@ -135,6 +136,7 @@ async def submit_score(
 
     doc_ref = db.collection("scores").document()
     doc_ref.set(score_data)
+    get_kafka_cache().invalidate_prefix("scores:")
 
     # Update allocation status to reviewed
     for alloc_doc in alloc_list:
@@ -159,17 +161,20 @@ async def get_project_scores(
 ):
     """Get all scores for a specific project (admin only)."""
     db = get_firestore_client()
-    docs = db.collection("scores").where("project_id", "==", project_id).get()
+    cache = get_kafka_cache()
+    cache_key = f"scores:project:{project_id}"
 
-    scores = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["score_id"] = doc.id
-        # Strip private notes for non-judge viewers
-        data["private_notes"] = None
-        scores.append(ScoreResponse(**data))
+    def loader():
+        docs = db.collection("scores").where("project_id", "==", project_id).get()
+        scores = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["score_id"] = doc.id
+            data["private_notes"] = None
+            scores.append(ScoreResponse(**data))
+        return scores
 
-    return scores
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 
 @router.get("/judge/{judge_id}", response_model=list[ScoreResponse])
@@ -179,15 +184,19 @@ async def get_judge_scores(
 ):
     """Get all evaluations submitted by a specific judge."""
     db = get_firestore_client()
-    docs = db.collection("scores").where("judge_id", "==", judge_id).get()
+    cache = get_kafka_cache()
+    cache_key = f"scores:judge:{judge_id}"
 
-    scores = []
-    for doc in docs:
-        data = doc.to_dict()
-        data["score_id"] = doc.id
-        scores.append(ScoreResponse(**data))
+    def loader():
+        docs = db.collection("scores").where("judge_id", "==", judge_id).get()
+        scores = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["score_id"] = doc.id
+            scores.append(ScoreResponse(**data))
+        return scores
 
-    return scores
+    return cache.get(cache_key, loader, ttl_secs=15)
 
 
 @router.get("/{score_id}", response_model=ScoreResponse)
@@ -197,11 +206,15 @@ async def get_score(
 ):
     """Get a single evaluation by ID."""
     db = get_firestore_client()
-    doc = db.collection("scores").document(score_id).get()
+    cache = get_kafka_cache()
+    cache_key = f"scores:score:{score_id}"
 
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Score not found")
+    def loader():
+        doc = db.collection("scores").document(score_id).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Score not found")
+        data = doc.to_dict()
+        data["score_id"] = doc.id
+        return ScoreResponse(**data)
 
-    data = doc.to_dict()
-    data["score_id"] = doc.id
-    return ScoreResponse(**data)
+    return cache.get(cache_key, loader, ttl_secs=20)

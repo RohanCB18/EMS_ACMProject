@@ -5,6 +5,7 @@ from io import BytesIO
 import os
 from datetime import datetime, timedelta
 from app.core.firebase_config import get_storage_bucket, get_firestore_client
+from app.core.kafka_cache import get_kafka_cache
 from firebase_admin import firestore
 from app.middleware import get_current_user
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
@@ -226,7 +227,7 @@ async def submit_reimbursement(
         
         doc_ref = db.collection("reimbursements").document()
         doc_ref.set(data)
-        
+        get_kafka_cache().invalidate_prefix("finance:reimbursements")
         return {"message": "Reimbursement submitted successfully", "id": doc_ref.id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to submit reimbursement: {str(e)}")
@@ -237,16 +238,21 @@ async def get_reimbursements(
 ):
     try:
         db = get_firestore_client()
-        docs = db.collection("reimbursements").order_by("created_at", direction=firestore.Query.DESCENDING).stream()
-        
-        reims = []
-        for doc in docs:
-            data = doc.to_dict()
-            if "created_at" in data:
-                data.pop("created_at")
-            reims.append({**data, "id": doc.id})
-            
-        return reims
+        cache = get_kafka_cache()
+        user_id = current_user.get("uid", "anonymous")
+        cache_key = f"finance:reimbursements:user:{user_id}"
+
+        def loader():
+            docs = db.collection("reimbursements").order_by("created_at", direction=firestore.Query.DESCENDING).stream()
+            reims = []
+            for doc in docs:
+                data = doc.to_dict()
+                if "created_at" in data:
+                    data.pop("created_at")
+                reims.append({**data, "id": doc.id})
+            return reims
+
+        return cache.get(cache_key, loader, ttl_secs=10)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch reimbursements: {str(e)}")
 
@@ -263,6 +269,7 @@ async def update_reimbursement_status(
         db = get_firestore_client()
         doc_ref = db.collection("reimbursements").document(reimbursement_id)
         doc_ref.update({"status": update.status})
+        get_kafka_cache().invalidate_prefix("finance:reimbursements")
         return {"message": "Status updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update reimbursement: {str(e)}")
