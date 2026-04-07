@@ -26,7 +26,7 @@ def _initialize_firebase():
         return
 
     # Resolve path: env var → next to this file (backend/app/) → backend root
-    _default_key_path = os.path.join(os.path.dirname(__file__), "..", "serviceAccountKey.json")
+    _default_key_path = os.path.join(os.path.dirname(__file__), "..", "..", "serviceAccountKey.json")
     service_account_path = os.getenv(
         "FIREBASE_SERVICE_ACCOUNT_KEY", _default_key_path
     )
@@ -35,7 +35,7 @@ def _initialize_firebase():
     if not os.path.exists(service_account_path):
         raise FileNotFoundError(
             f"Firebase service account key not found at: {service_account_path}\n"
-            "Place 'serviceAccountKey.json' in backend/app/ or set the "
+            "Place 'serviceAccountKey.json' in the backend/ root folder or set the "
             "FIREBASE_SERVICE_ACCOUNT_KEY env var to the correct path."
         )
 
