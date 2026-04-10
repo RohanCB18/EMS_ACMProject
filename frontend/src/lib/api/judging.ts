@@ -208,4 +208,9 @@ export const judgingApi = {
             method: 'POST',
             body: JSON.stringify(data),
         }),
+
+    saveRankings: (eventId: string, round: string = 'finals') =>
+        judgingFetch<{ message: string; total_saved: number }>(`/api/judging/rankings/${eventId}/save-rankings?round=${round}`, {
+            method: 'POST',
+        }),
 };

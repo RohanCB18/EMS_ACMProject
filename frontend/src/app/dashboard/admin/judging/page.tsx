@@ -308,6 +308,14 @@ export default function JudgingDashboard() {
         }
     };
 
+    const handleSaveRankings = async () => {
+        try {
+            const result = await judgingApi.saveRankings(EVENT_ID, selectedRound);
+            toast.success(result.message);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to save rankings');
+        }
+    };
     const handleRemoveAllocation = async (alloc: Allocation) => {
         if (!confirm(`Remove assignment of "${alloc.project_title}" from judge ${alloc.judge_name}?`)) return;
         try {
@@ -776,7 +784,11 @@ export default function JudgingDashboard() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Live Rankings</CardTitle>
-                                <CardDescription>Aggregated scores from all judge evaluations. Toggle shortlist status for each project.</CardDescription>
+                                <CardDescription>
+                                    {selectedRound === 'round_1'
+                                        ? 'Aggregated scores from Round 1. Select teams to advance to the Finals round.'
+                                        : 'Final round rankings. These are the results.'}
+                                </CardDescription>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Select value={selectedRound} onValueChange={setSelectedRound}>
@@ -789,6 +801,11 @@ export default function JudgingDashboard() {
                                     </SelectContent>
                                 </Select>
                                 <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export</Button>
+                                {selectedRound === 'finals' && (
+                                    <Button onClick={handleSaveRankings} className="bg-green-600 hover:bg-green-700 text-white">
+                                        <CheckCircle2 className="mr-2 h-4 w-4" /> Save Results
+                                    </Button>
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -801,13 +818,13 @@ export default function JudgingDashboard() {
                                         <TableHead>Track</TableHead>
                                         <TableHead className="text-center">Evaluations</TableHead>
                                         <TableHead className="text-center">Avg. Score</TableHead>
-                                        <TableHead className="text-center">Shortlisted</TableHead>
+                                        {selectedRound === 'round_1' && <TableHead className="text-center">Advance to Finals</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {rankings.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                            <TableCell colSpan={selectedRound === 'round_1' ? 7 : 6} className="h-32 text-center text-muted-foreground">
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Trophy className="h-6 w-6 opacity-40" />
                                                     <p className="text-sm">No rankings available. Scores must be submitted first.</p>
@@ -837,16 +854,18 @@ export default function JudgingDashboard() {
                                                     {r.avg_weighted_score.toFixed(1)}%
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-center">
-                                                <Button
-                                                    variant={r.shortlisted ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    className={r.shortlisted ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
-                                                    onClick={() => handleToggleShortlist(r.project_id)}
-                                                >
-                                                    {r.shortlisted ? <><CheckCircle2 className="mr-1 h-3 w-3" /> Yes</> : 'Select'}
-                                                </Button>
-                                            </TableCell>
+                                            {selectedRound === 'round_1' && (
+                                                <TableCell className="text-center">
+                                                    <Button
+                                                        variant={r.shortlisted ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        className={r.shortlisted ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                                                        onClick={() => handleToggleShortlist(r.project_id)}
+                                                    >
+                                                        {r.shortlisted ? <><CheckCircle2 className="mr-1 h-3 w-3" /> Yes</> : 'Select'}
+                                                    </Button>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>

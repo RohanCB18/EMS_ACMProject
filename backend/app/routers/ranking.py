@@ -220,3 +220,55 @@ async def export_winners(
             for w in winners
         ],
     }
+
+
+@router.post("/{event_id}/save-rankings")
+async def save_rankings(
+    event_id: str,
+    round: EvaluationRound = Query(EvaluationRound.FINALS),
+    admin: dict = Depends(require_role("admin", "super_admin")),
+):
+    """Persist the computed rankings into Firestore for permanent storage."""
+    db = get_firestore_client()
+    rankings = _aggregate_rankings(db, event_id, round.value)
+
+    if not rankings:
+        raise HTTPException(status_code=400, detail="No rankings to save.")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Delete any existing saved rankings for this event/round
+    existing = db.collection("final_rankings") \
+        .where("event_id", "==", event_id) \
+        .where("round", "==", round.value).get()
+    for doc in existing:
+        doc.reference.delete()
+
+    # Save each ranked project
+    saved = []
+    for r in rankings:
+        entry = {
+            "event_id": event_id,
+            "round": round.value,
+            "rank": r.rank,
+            "project_id": r.project_id,
+            "project_title": r.project_title,
+            "team_name": r.team_name or "",
+            "track": r.track or "",
+            "avg_score": r.avg_weighted_score,
+            "evaluations": r.total_evaluations,
+            "saved_at": now,
+            "saved_by": admin.get("uid", "unknown"),
+        }
+        doc_ref = db.collection("final_rankings").document()
+        doc_ref.set(entry)
+        saved.append(entry)
+
+    get_kafka_cache().invalidate_prefix("rankings:")
+    logger.info(f"Saved {len(saved)} rankings for event {event_id}, round {round.value}")
+
+    return {
+        "message": f"Saved {len(saved)} rankings for {round.value}",
+        "total_saved": len(saved),
+    }
+
