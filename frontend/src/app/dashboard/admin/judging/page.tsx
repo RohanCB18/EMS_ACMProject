@@ -180,7 +180,7 @@ export default function JudgingDashboard() {
             setJudges(prev => [...prev, newJudge]);
             setInviteForm({ name: '', email: '', organization: '', tags: '' });
             setInviteOpen(false);
-            toast.success(`Judge ${newJudge.name} invited successfully!`);
+            toast.success(`Invitation email sent to ${newJudge.name} (${inviteForm.email})!`);
         } catch (err: any) {
             toast.error(err.message || 'Failed to invite judge');
         }

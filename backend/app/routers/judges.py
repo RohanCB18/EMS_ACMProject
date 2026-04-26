@@ -2,34 +2,103 @@
 Judge Onboarding & Management Router
 
 Endpoints:
-- POST   /invite        â€” Admin invites a judge by email
-- GET    /               â€” List all judges
-- GET    /{judge_id}     â€” Get judge profile
-- PUT    /{judge_id}     â€” Update judge expertise tags
-- PUT    /{judge_id}/coi â€” Flag conflict of interest
-- DELETE /{judge_id}     â€” Remove a judge
+- POST   /invite        — Admin invites a judge by email
+- GET    /               — List all judges
+- GET    /{judge_id}     — Get judge profile
+- PUT    /{judge_id}     — Update judge expertise tags
+- PUT    /{judge_id}/coi — Flag conflict of interest
+- DELETE /{judge_id}     — Remove a judge
 """
 
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.core.firebase_config import get_firestore_client
 from app.core.kafka_cache import get_kafka_cache
 from app.middleware import get_current_user, require_role
 from app.models import JudgeInvite, JudgeProfileUpdate, JudgeCoiFlag, JudgeResponse
+from app.routers.automation import send_smtp_email
 
 logger = logging.getLogger("ems.set_c.judges")
 router = APIRouter()
 
 
+def _build_judge_invite_email(judge_name: str, expertise_tags: list[str], organization: str | None) -> str:
+    """Build a professional HTML email for judge invitation."""
+    tags_html = ""
+    if expertise_tags:
+        tags_html = "".join(
+            f'<span style="display:inline-block;background:#e0e7ff;color:#3730a3;'
+            f'padding:4px 12px;border-radius:20px;font-size:13px;margin:2px 4px;">{tag}</span>'
+            for tag in expertise_tags
+        )
+
+    org_line = ""
+    if organization:
+        org_line = f'<p style="color:#64748b;font-size:14px;">Organization: <strong>{organization}</strong></p>'
+
+    return f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+        <!-- Header -->
+        <div style="background:linear-gradient(135deg,#3b82f6,#6366f1);padding:32px 24px;text-align:center;">
+            <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;">⚖️ You're Invited to Judge!</h1>
+            <p style="color:#dbeafe;margin:8px 0 0;font-size:15px;">HackOdyssey 2026 Global Hackathon</p>
+        </div>
+
+        <!-- Body -->
+        <div style="padding:32px 24px;">
+            <p style="color:#1e293b;font-size:16px;line-height:1.6;">
+                Dear <strong>{judge_name}</strong>,
+            </p>
+            <p style="color:#475569;font-size:15px;line-height:1.6;">
+                We are thrilled to invite you to serve as a <strong>Judge</strong> at
+                <strong>HackOdyssey 2026</strong>. Your expertise is invaluable to us and we look
+                forward to your participation in evaluating the innovative projects from our talented teams.
+            </p>
+
+            {org_line}
+
+            <!-- Expertise Tags -->
+            <div style="margin:20px 0;">
+                <p style="color:#1e293b;font-size:14px;font-weight:600;margin-bottom:8px;">Your Expertise Areas:</p>
+                <div>{tags_html if tags_html else '<span style="color:#94a3b8;font-size:13px;">No specific tags assigned yet</span>'}</div>
+            </div>
+
+            <!-- CTA Button -->
+            <div style="text-align:center;margin:32px 0;">
+                <a href="http://localhost:3000/dashboard/judge"
+                   style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#6366f1);color:#ffffff;
+                          text-decoration:none;padding:14px 40px;border-radius:8px;font-size:16px;font-weight:600;
+                          box-shadow:0 4px 14px rgba(59,130,246,0.4);">
+                    Access Judge Dashboard →
+                </a>
+            </div>
+
+            <p style="color:#475569;font-size:14px;line-height:1.6;">
+                Please log in using your email address (<strong>{judge_name}</strong>'s registered email) to access your
+                judging assignments, scoring rubrics, and evaluation forms.
+            </p>
+
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+
+            <p style="color:#94a3b8;font-size:12px;text-align:center;">
+                This is an automated invitation from the HackOdyssey Event Management System.<br>
+                If you received this in error, please disregard this email.
+            </p>
+        </div>
+    </div>
+    """
+
+
 @router.post("/invite", response_model=JudgeResponse)
 async def invite_judge(
     body: JudgeInvite,
+    background_tasks: BackgroundTasks,
     admin: dict = Depends(require_role("admin", "super_admin")),
 ):
-    """Invite a new judge by email. Creates a judge profile in Firestore."""
+    """Invite a new judge by email. Creates a judge profile in Firestore and sends an invitation email."""
     db = get_firestore_client()
 
     # Check if judge already exists by email
@@ -54,7 +123,16 @@ async def invite_judge(
     doc_ref.set(judge_data)
     get_kafka_cache().invalidate_prefix("judges:")
 
-    logger.info(f"Judge invited: {body.email} by admin {admin.get('uid')}")
+    # Send invitation email in the background (same pattern as certificate blasting)
+    email_body = _build_judge_invite_email(body.name, body.expertise_tags, body.organization)
+    background_tasks.add_task(
+        send_smtp_email,
+        [body.email],
+        "🎓 You're Invited to Judge at HackOdyssey 2026!",
+        email_body,
+    )
+
+    logger.info(f"Judge invited: {body.email} by admin {admin.get('uid')} — invitation email queued")
 
     return JudgeResponse(judge_id=doc_ref.id, **judge_data)
 
