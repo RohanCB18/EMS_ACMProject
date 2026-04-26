@@ -33,8 +33,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2 } from 'lucide-react';
+import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2, Camera } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, query, where, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { fetchApi } from '@/lib/api';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#a05195', '#f95d6a'];
 
@@ -52,6 +55,72 @@ export default function FinanceDashboard() {
             return saved ? JSON.parse(saved) : [];
         } catch { return []; }
     });
+
+    const [reimbursements, setReimbursements] = useState<any[]>([]);
+    const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+
+    // Secure fetch for reimbursements and winners using backend API
+    useEffect(() => {
+        const fetchAllData = async () => {
+            try {
+                // 1. Fetch volunteers via secure backend
+                const volunteerData = await fetchApi("/api/finance/reimbursements");
+                const volunteerExp = volunteerData.map((data: any) => ({
+                    id: data.id,
+                    name: data.volunteer_name,
+                    usn: data.volunteer_usn,
+                    mobile: data.volunteer_mobile,
+                    amount: data.amount,
+                    description: data.item_description,
+                    status: data.status ? data.status.charAt(0).toUpperCase() + data.status.slice(1) : "Pending",
+                    receipt_url: data.receipt_url,
+                    type: 'volunteer'
+                }));
+
+                // 2. Fetch winners via secure backend
+                const winnerData = await fetchApi("/api/admin/users?role=winner");
+                const winners = winnerData.map((data: any) => ({
+                    id: data.uid,
+                    name: data.display_name,
+                    usn: data.usn || 'N/A',
+                    mobile: data.mobile || 'N/A',
+                    amount: 25000, 
+                    description: `${data.track || 'General'} Track 1st Prize`,
+                    status: 'Pending', 
+                    type: 'winner'
+                }));
+
+                setReimbursements([...volunteerExp, ...winners]);
+            } catch (error) {
+                console.error("Error fetching financial data:", error);
+                toast.error("Failed to load reimbursements. Please refresh.");
+            }
+        };
+
+        fetchAllData();
+        // Optional: Set an interval to poll if real-time is strictly required
+        // const interval = setInterval(fetchAllData, 30000);
+        // return () => clearInterval(interval);
+    }, []);
+
+    const updateReimbursementStatus = async (id: string, newStatus: string, type: string) => {
+        try {
+            if (type === 'volunteer') {
+                await fetchApi(`/api/finance/reimbursements/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ status: newStatus.toLowerCase() })
+                });
+                
+                setReimbursements(prev => prev.map(r => r.id === id ? { ...r, status: newStatus } : r));
+                toast.success(`Updated status to ${newStatus}`);
+            } else {
+                toast.info("Winner prize status tracking to be integrated with Payouts API.");
+            }
+        } catch (error) {
+            console.error("Error updating status:", error);
+            toast.error("Failed to update status.");
+        }
+    };
 
     // Persist transactions to localStorage whenever they update
     useEffect(() => {
@@ -106,7 +175,8 @@ export default function FinanceDashboard() {
                 formData.append('file', blob, 'mock_statement.csv');
             }
 
-            const response = await fetch("http://localhost:8001/api/finance/upload", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${API_BASE}/api/finance/upload`, {
                 method: "POST",
                 body: formData
             });
@@ -147,11 +217,13 @@ export default function FinanceDashboard() {
                     <p className="text-muted-foreground">Manage budgets, track expenses, and automate reimbursements.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Report</Button>
+                    <Button variant="outline" onClick={() => { localStorage.removeItem('finance_transactions'); setTransactions([]); }}>
+                        <RefreshCw className="mr-2 h-4 w-4" /> Clear Data
+                    </Button>
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
@@ -170,16 +242,6 @@ export default function FinanceDashboard() {
                     <CardContent>
                         <div className="text-2xl font-bold">₹{totalSpent.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <p className="text-xs text-muted-foreground">{((totalSpent / 1000000) * 100).toFixed(1)}% of total budget</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-                        <Receipt className="h-4 w-4 text-amber-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{pendingCount}</div>
-                        <p className="text-xs text-muted-foreground">Totalling ₹{pendingTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -209,7 +271,7 @@ export default function FinanceDashboard() {
                                 <CardDescription>Monthly expense burn rate leading up to the event.</CardDescription>
                             </CardHeader>
                             <CardContent className="h-[300px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                     <BarChart data={monthlySpend}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.2} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} />
@@ -227,7 +289,7 @@ export default function FinanceDashboard() {
                                 <CardDescription>Budget allocation across categories.</CardDescription>
                             </CardHeader>
                             <CardContent className="h-[300px] flex flex-col justify-center items-center">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minHeight={300}>
                                     <PieChart>
                                         <Pie
                                             data={expenseData}
@@ -351,24 +413,69 @@ export default function FinanceDashboard() {
                 </TabsContent>
 
                 <TabsContent value="reimbursements" className="space-y-4">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="text-lg font-medium tracking-tight">Manual Reimbursement Tracker (GPay)</h3>
+                            <p className="text-sm text-muted-foreground">Process payments manually via GPay and track their status.</p>
+                        </div>
+                    </div>
                     <div className="grid gap-4 md:grid-cols-2">
-                        {transactions.filter(tx => tx.category === 'Reimbursement' && tx.status === 'Pending').map((tx, i) => (
-                            <Card key={tx.id} className="border-amber-200/50 shadow-sm relative overflow-hidden">
-                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
+                        {reimbursements.map((reimb) => (
+                            <Card key={reimb.id} className={`border-l-4 shadow-sm relative overflow-hidden ${reimb.status === 'Pending' ? 'border-amber-400' :
+                                reimb.status === 'Processing' ? 'border-blue-400' : 'border-green-400'
+                                }`}>
                                 <CardHeader className="pb-2">
                                     <div className="flex justify-between items-start">
-                                        <CardTitle className="text-base">{tx.description}</CardTitle>
-                                        <span className="text-lg font-bold">${tx.amount.toFixed(2)}</span>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <CardTitle className="text-base">{reimb.description}</CardTitle>
+                                                <Badge variant="outline" className="text-[9px] uppercase tracking-tighter h-4">
+                                                    {reimb.type === 'winner' ? '🏆 Prize' : '🙋 Volunteer'}
+                                                </Badge>
+                                            </div>
+                                            <CardDescription className="mt-1 font-medium text-foreground">{reimb.name} • {reimb.usn}</CardDescription>
+                                            <CardDescription className="flex items-center gap-1 mt-1 text-sm bg-muted/60 p-1 px-2 rounded-md font-mono">
+                                                📱 GPay: {reimb.mobile}
+                                            </CardDescription>
+                                        </div>
+                                        <div className="text-right flex flex-col items-end">
+                                            <span className="text-lg font-bold">₹{reimb.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                            <div className="mt-2">
+                                                {reimb.status === 'Pending' && <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 uppercase tracking-widest text-[10px]">Pending</Badge>}
+                                                {reimb.status === 'Processing' && <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 uppercase tracking-widest text-[10px]">Processing</Badge>}
+                                                {reimb.status === 'Done' && <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 uppercase tracking-widest text-[10px]">Done ✓</Badge>}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <CardDescription>Submitted on {tx.date}</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md text-sm mb-4">
-                                        <CheckCircle2 className="h-4 w-4 text-green-500" /> Auto-validated: Receipt clearly legible.
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button className="w-full bg-green-600 hover:bg-green-700">Approve & Pay via Razorpay</Button>
-                                        <Button variant="outline" className="text-destructive">Reject</Button>
+                                    <div className="flex flex-col gap-2 mt-2">
+                                        {reimb.receipt_url && (
+                                            <Button variant="link" className="h-4 p-0 text-xs justify-start text-blue-600" onClick={() => setReceiptPreview(reimb.receipt_url)}>
+                                                <Camera className="mr-1 h-3 w-3" /> View Receipt Screenshot
+                                            </Button>
+                                        )}
+                                        <div className="flex gap-2">
+                                            {reimb.status === 'Pending' && (
+                                                <Button
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                                    onClick={() => updateReimbursementStatus(reimb.id, 'Processing', reimb.type)}
+                                                >Mark as Processing</Button>
+                                            )}
+                                            {reimb.status === 'Processing' && (
+                                                <Button
+                                                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                                                    onClick={() => updateReimbursementStatus(reimb.id, 'Done', reimb.type)}
+                                                >Mark as Paid (Done)</Button>
+                                            )}
+                                            {reimb.status === 'Done' && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full text-muted-foreground bg-muted/30"
+                                                    disabled
+                                                ><CheckCircle2 className="mr-2 h-4 w-4" /> Payment Completed</Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -377,6 +484,21 @@ export default function FinanceDashboard() {
                 </TabsContent>
 
             </Tabs>
+
+            {/* Receipt Preview Modal */}
+            <Dialog open={!!receiptPreview} onOpenChange={() => setReceiptPreview(null)}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Receipt Screenshot</DialogTitle>
+                        <DialogDescription>Uploaded proof of payment</DialogDescription>
+                    </DialogHeader>
+                    {receiptPreview && (
+                        <div className="flex justify-center">
+                            <img src={receiptPreview} alt="Receipt" className="max-h-[70vh] object-contain rounded-md border" />
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

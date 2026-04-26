@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileBadge, Send, CopyCheck, FileKey2, FileDown, Layers, History, MailCheck, ShieldAlert, Plus, Trash2, X } from 'lucide-react';
+import { FileBadge, Send, CopyCheck, FileKey2, FileDown, Layers, History, MailCheck, ShieldAlert, Plus, Trash2, X, QrCode } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -17,16 +17,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { toast } from "sonner"
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { fetchApi } from '@/lib/api';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -47,15 +41,16 @@ export default function AutomationDashboard() {
     const [isSending, setIsSending] = useState(false);
     const [sendWithCert, setSendWithCert] = useState(false);
 
-    // Email blast state
     const [emailSubject, setEmailSubject] = useState("");
     const [emailBody, setEmailBody] = useState("");
     const [emailTo, setEmailTo] = useState("");
+    const [isFetchingEmails, setIsFetchingEmails] = useState(false);
+    const [emailSegment, setEmailSegment] = useState("custom");
 
-    // Certificate recipient list
-    const [recipients, setRecipients] = useState<Recipient[]>([
-        { id: '1', name: '', email: '', role: 'Participant', track: 'General', project_name: '' }
-    ]);
+    // Certificate recipient list from DB
+    const [targetSegment, setTargetSegment] = useState("all");
+    const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+    const [recipients, setRecipients] = useState<Recipient[]>([]);
 
     // Single / preview cert form
     const [previewName, setPreviewName] = useState('');
@@ -63,21 +58,80 @@ export default function AutomationDashboard() {
     const [previewTrack, setPreviewTrack] = useState('General');
     const [previewProject, setPreviewProject] = useState('');
 
-    // ── Recipient helpers ────────────────────────────────────────────────────
+    // QR Badge Blast state
+    const [qrEmails, setQrEmails] = useState('');
+    const [qrExpiry, setQrExpiry] = useState(24);
+    const [isBlasting, setIsBlasting] = useState(false);
+    const [qrIncludeCert, setQrIncludeCert] = useState(true);
 
-    const addRecipient = () => {
-        setRecipients(prev => [
-            ...prev,
-            { id: Date.now().toString(), name: '', email: '', role: 'Participant', track: 'General', project_name: '' }
-        ]);
+    // ── Fetch Users from Firebase ────────────────────────────────────────────
+
+    const fetchUsersFromDb = async () => {
+        setIsFetchingUsers(true);
+        try {
+            let roleQuery = "";
+            if (targetSegment === "all") {
+                roleQuery = "?role=participant";
+            } else if (targetSegment === "winners") {
+                roleQuery = "?role=winner";
+            } else {
+                toast.error("Invalid segment selected");
+                setIsFetchingUsers(false);
+                return;
+            }
+
+            const querySnapshot: any[] = await fetchApi(`/api/admin/users${roleQuery}`);
+            const fetchedRecipients: Recipient[] = [];
+            
+            querySnapshot.forEach((data) => {
+                if (data.email && data.display_name) {
+                    fetchedRecipients.push({
+                        id: data.uid,
+                        name: data.display_name,
+                        email: data.email,
+                        role: data.role === "winner" ? "Winner" : "Participant",
+                        track: data.track || "General",
+                        project_name: data.project_name || ""
+                    });
+                }
+            });
+
+            setRecipients(fetchedRecipients);
+            toast.success(`Fetched ${fetchedRecipients.length} users from the database.`);
+        } catch (error) {
+            console.error("Error fetching users:", error);
+            toast.error("Failed to fetch users from the database.");
+        } finally {
+            setIsFetchingUsers(false);
+        }
     };
 
-    const removeRecipient = (id: string) => {
-        setRecipients(prev => prev.filter(r => r.id !== id));
-    };
-
-    const updateRecipient = (id: string, field: keyof Recipient, value: string) => {
-        setRecipients(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    const fetchEmailsFromDb = async (role: string) => {
+        if (role === "custom") {
+            setEmailTo("");
+            return;
+        }
+        setIsFetchingEmails(true);
+        try {
+            const querySnapshot: any[] = await fetchApi(`/api/admin/users?role=${role}`);
+            const emails: string[] = [];
+            querySnapshot.forEach((data) => {
+                if (data.email) emails.push(data.email);
+            });
+            
+            if (emails.length === 0) {
+                toast.warning(`No users found with role: ${role}`);
+                setEmailTo("");
+            } else {
+                setEmailTo(emails.join(", "));
+                toast.success(`Fetched ${emails.length} ${role}(s) from the database.`);
+            }
+        } catch (error) {
+            console.error("Error fetching emails:", error);
+            toast.error("Failed to fetch emails from the database.");
+        } finally {
+            setIsFetchingEmails(false);
+        }
     };
 
     // ── Preview / Single PDF download ────────────────────────────────────────
@@ -89,7 +143,8 @@ export default function AutomationDashboard() {
         }
         setIsGenerating(true);
         try {
-            const response = await fetch("http://localhost:8001/api/automation/certificates/generate", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${API_BASE}/api/automation/certificates/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -123,9 +178,8 @@ export default function AutomationDashboard() {
     // ── Bulk generate & email ────────────────────────────────────────────────
 
     const handleBulkGenerate = async () => {
-        const validRecipients = recipients.filter(r => r.name.trim() && r.email.trim());
-        if (validRecipients.length === 0) {
-            toast.error("Add at least one recipient with name and email");
+        if (recipients.length === 0) {
+            toast.error("Please fetch recipients from the database first.");
             return;
         }
 
@@ -133,9 +187,10 @@ export default function AutomationDashboard() {
         let successCount = 0;
         let failCount = 0;
 
-        for (const recipient of validRecipients) {
+        for (const recipient of recipients) {
             try {
-                const response = await fetch("http://localhost:8001/api/automation/email/blast", {
+                const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const response = await fetch(`${API_BASE}/api/automation/email/blast`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -148,6 +203,9 @@ export default function AutomationDashboard() {
                                <p>Thank you for being part of this amazing journey!</p>
                                <p>— Team HackOdyssey</p>`,
                         include_certificate_for: recipient.name,
+                        role: recipient.role,
+                        track: recipient.track,
+                        project_name: recipient.project_name,
                     })
                 });
 
@@ -182,7 +240,8 @@ export default function AutomationDashboard() {
 
         setIsSending(true);
         try {
-            const response = await fetch("http://localhost:8001/api/automation/email/blast", {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${API_BASE}/api/automation/email/blast`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -207,6 +266,39 @@ export default function AutomationDashboard() {
         }
     };
 
+    // ── QR Badge Blast ───────────────────────────────────────────────────────
+
+    const handleQrBlast = async () => {
+        const emails = qrEmails.split(/[\n,]/).map(e => e.trim()).filter(Boolean);
+        if (emails.length === 0) {
+            toast.error("Enter at least one email");
+            return;
+        }
+        setIsBlasting(true);
+        try {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${API_BASE}/api/checkin/attendance/qr-blast`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    usns: emails,
+                    event_id: 'hackodyssey2026',
+                    expiry_hours: qrExpiry,
+                    include_certificate: qrIncludeCert,
+                }),
+            });
+            if (!response.ok) throw new Error('Blast failed');
+            const data = await response.json();
+            toast.success(data.message || `QR badges sent to ${emails.length} email(s)!`);
+            setQrEmails('');
+        } catch (error) {
+            toast.error('Failed to send QR badges');
+            console.error(error);
+        } finally {
+            setIsBlasting(false);
+        }
+    };
+
     // ── Render ───────────────────────────────────────────────────────────────
 
     return (
@@ -216,50 +308,15 @@ export default function AutomationDashboard() {
                     <h2 className="text-3xl font-bold tracking-tight">Post-Event Automation</h2>
                     <p className="text-muted-foreground">Automate certificate generation, bulk emails, and feedback forms.</p>
                 </div>
-                <div className="flex gap-2">
-                    <Button variant="outline"><History className="mr-2 h-4 w-4" /> View Logs</Button>
-                </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Emails Sent</CardTitle>
-                        <Send className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">1,240</div>
-                        <p className="text-xs text-muted-foreground">+180 this week</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Certificates Generated</CardTitle>
-                        <FileBadge className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">542</div>
-                        <p className="text-xs text-muted-foreground">Across 3 Tracks</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Feedback Collected</CardTitle>
-                        <CopyCheck className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">384</div>
-                        <p className="text-xs text-muted-foreground">70.8% response rate</p>
-                    </CardContent>
-                </Card>
-            </div>
+
 
             <Tabs defaultValue="certificates" onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-2 md:grid-cols-3">
+                <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-3">
                     <TabsTrigger value="certificates">Certificate Engine</TabsTrigger>
                     <TabsTrigger value="communications">Email Blaster</TabsTrigger>
-                    <TabsTrigger value="feedback">Feedback Loops</TabsTrigger>
+                    <TabsTrigger value="qr-blast">QR Badge Blast</TabsTrigger>
                 </TabsList>
 
                 {/* ── Certificate Engine Tab ─────────────────────────────── */}
@@ -324,58 +381,56 @@ export default function AutomationDashboard() {
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Bulk Generate & Email</CardTitle>
-                                <CardDescription>Add recipients below. Each gets a personalized PDF certificate via email.</CardDescription>
+                                <CardDescription>Fetch recipients directly from the Firebase Database.</CardDescription>
                             </CardHeader>
-                            <CardContent className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                                {recipients.map((r, idx) => (
-                                    <div key={r.id} className="border rounded-lg p-3 space-y-2 relative">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-muted-foreground font-medium">Recipient {idx + 1}</span>
-                                            {recipients.length > 1 && (
-                                                <button onClick={() => removeRecipient(r.id)} className="text-destructive hover:text-red-500">
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Input placeholder="Full Name" value={r.name} onChange={e => updateRecipient(r.id, 'name', e.target.value)} />
-                                            <Input placeholder="Email" type="email" value={r.email} onChange={e => updateRecipient(r.id, 'email', e.target.value)} />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Select value={r.role} onValueChange={v => updateRecipient(r.id, 'role', v)}>
-                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Participant">Participant</SelectItem>
-                                                    <SelectItem value="Winner">Winner</SelectItem>
-                                                    <SelectItem value="Runner Up">Runner Up</SelectItem>
-                                                    <SelectItem value="Mentor">Mentor</SelectItem>
-                                                    <SelectItem value="Judge">Judge</SelectItem>
-                                                    <SelectItem value="Volunteer">Volunteer</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Select value={r.track} onValueChange={v => updateRecipient(r.id, 'track', v)}>
-                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="General">General</SelectItem>
-                                                    <SelectItem value="AI/ML">AI/ML</SelectItem>
-                                                    <SelectItem value="Web3">Web3</SelectItem>
-                                                    <SelectItem value="HealthTech">HealthTech</SelectItem>
-                                                    <SelectItem value="FinTech">FinTech</SelectItem>
-                                                    <SelectItem value="Open Innovation">Open Innovation</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <Input placeholder="Project Name (optional)" className="text-xs h-8" value={r.project_name} onChange={e => updateRecipient(r.id, 'project_name', e.target.value)} />
+                            <CardContent className="space-y-4">
+                                <div className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-muted">
+                                    <div className="flex-1 space-y-2">
+                                        <Label>Select Target Audience</Label>
+                                        <Select value={targetSegment} onValueChange={setTargetSegment}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select Audience segment" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">🏆 All Confirmed Participants</SelectItem>
+                                                <SelectItem value="winners">⭐ Hackathon Winners</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-                                ))}
-                                <Button variant="outline" size="sm" className="w-full" onClick={addRecipient}>
-                                    <Plus className="mr-2 h-3.5 w-3.5" /> Add Recipient
-                                </Button>
+                                    <div className="flex items-end">
+                                        <Button variant="secondary" className="w-full sm:w-auto" onClick={fetchUsersFromDb} disabled={isFetchingUsers}>
+                                            <Layers className="mr-2 h-4 w-4" /> {isFetchingUsers ? 'Fetching...' : 'Fetch Users'}
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {recipients.length > 0 ? (
+                                    <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
+                                        <div className="text-sm font-medium text-muted-foreground mb-2 flex justify-between items-center">
+                                            <span>Ready to send to {recipients.length} users:</span>
+                                            <Button variant="ghost" size="sm" onClick={() => setRecipients([])} className="h-6 px-2 text-xs">Clear List</Button>
+                                        </div>
+                                        {recipients.map((r) => (
+                                            <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between border rounded-lg p-3 text-sm gap-2">
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold">{r.name}</span>
+                                                    <span className="text-xs text-muted-foreground">{r.email}</span>
+                                                </div>
+                                                <Badge variant="outline" className="w-fit">{r.role}</Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="py-8 text-center text-muted-foreground">
+                                        <FileBadge className="h-8 w-8 mx-auto mb-3 opacity-20" />
+                                        <p>Select an audience and click "Fetch Users" to load recipients from the database.</p>
+                                    </div>
+                                )}
                             </CardContent>
                             <CardFooter className="border-t pt-4">
-                                <Button className="w-full bg-primary" onClick={handleBulkGenerate} disabled={isGenerating}>
+                                <Button className="w-full bg-primary" onClick={handleBulkGenerate} disabled={isGenerating || recipients.length === 0}>
                                     <Send className="mr-2 h-4 w-4" />
-                                    {isGenerating ? 'Sending...' : `Generate & Email ${recipients.filter(r => r.name && r.email).length} Certificate(s)`}
+                                    {isGenerating ? 'Sending...' : `Generate & Email ${recipients.length} Certificate(s)`}
                                 </Button>
                             </CardFooter>
                         </Card>
@@ -391,11 +446,33 @@ export default function AutomationDashboard() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <Label>To (comma-separated emails)</Label>
+                                <Label>Database Audience</Label>
+                                <Select value={emailSegment} onValueChange={(v) => {
+                                    setEmailSegment(v);
+                                    fetchEmailsFromDb(v);
+                                }}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Database Segment" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="custom">Custom (Type below)</SelectItem>
+                                        <SelectItem value="participant">🏆 All Confirmed Participants</SelectItem>
+                                        <SelectItem value="winner">⭐ Hackathon Winners</SelectItem>
+                                        <SelectItem value="sponsor">🤝 Event Sponsors</SelectItem>
+                                        <SelectItem value="judge">⚖️ Hackathon Judges</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="flex justify-between">
+                                    <span>To (comma-separated emails)</span>
+                                    {isFetchingEmails && <span className="text-xs text-primary animate-pulse font-normal">Fetching...</span>}
+                                </Label>
                                 <Input
                                     placeholder="alice@example.com, bob@example.com"
                                     value={emailTo}
                                     onChange={e => setEmailTo(e.target.value)}
+                                    disabled={isFetchingEmails}
                                 />
                             </div>
                             <div className="space-y-2">
@@ -433,17 +510,44 @@ export default function AutomationDashboard() {
                     </Card>
                 </TabsContent>
 
-                {/* ── Feedback Loops Tab ────────────────────────────────── */}
-                <TabsContent value="feedback" className="space-y-4">
-                    <Card className="border-amber-200/50 bg-amber-500/5">
-                        <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                            <ShieldAlert className="h-10 w-10 text-amber-500 mb-4" />
-                            <h3 className="text-xl font-bold mb-2">Event In Progress</h3>
-                            <p className="text-muted-foreground max-w-md mb-6">
-                                Automated feedback forms will unlock after the judging phase concludes. This prevents participants from getting distracted.
-                            </p>
-                            <Button disabled variant="outline">Configure Forms (Locked)</Button>
+                {/* ── QR Badge Blast Tab ────────────────────────────────── */}
+                <TabsContent value="qr-blast" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><QrCode className="h-5 w-5" /> QR Badge Blast</CardTitle>
+                            <CardDescription>Enter email addresses to send personalized QR attendance badges. When scanned, the corresponding email will receive their certificate.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Email Addresses (one per line or comma-separated)</Label>
+                                <Textarea
+                                    placeholder={"alice@example.com\nbob@example.com\ncharlie@example.com"}
+                                    className="min-h-[160px] font-mono text-sm"
+                                    value={qrEmails}
+                                    onChange={e => setQrEmails(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">{qrEmails.split(/[\n,]/).filter(e => e.trim()).length} email(s) entered</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>QR Expiry (hours)</Label>
+                                    <Input type="number" min={1} max={168} value={qrExpiry} onChange={e => setQrExpiry(Number(e.target.value))} />
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <Label className="text-base">Include Certificate on Scan</Label>
+                                    <p className="text-sm text-muted-foreground">When QR is scanned at check-in, automatically email the certificate to that address.</p>
+                                </div>
+                                <Switch checked={qrIncludeCert} onCheckedChange={setQrIncludeCert} />
+                            </div>
                         </CardContent>
+                        <CardFooter className="border-t pt-4">
+                            <Button className="w-full" onClick={handleQrBlast} disabled={isBlasting}>
+                                <Send className="mr-2 h-4 w-4" />
+                                {isBlasting ? 'Sending...' : `Blast QR Badges to ${qrEmails.split(/[\n,]/).filter(e => e.trim()).length} Email(s)`}
+                            </Button>
+                        </CardFooter>
                     </Card>
                 </TabsContent>
             </Tabs>

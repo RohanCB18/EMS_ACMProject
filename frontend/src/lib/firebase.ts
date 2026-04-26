@@ -18,6 +18,7 @@ import {
     type User,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 import { fetchApi } from "./api";
 
 const firebaseConfig = {
@@ -29,17 +30,20 @@ const firebaseConfig = {
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+console.log("Firebase Config:", firebaseConfig);
+
 // Initialize Firebase (prevent duplicate initialization in dev hot-reload)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // OAuth Providers
 const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
 
 // Backend API base URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**
  * Sign in with email and password.
@@ -92,14 +96,14 @@ async function getIdToken(): Promise<string | null> {
 /**
  * Create user profile in backend Firestore via API.
  */
-async function createUserProfile(user: User, displayName: string, institution?: string) {
+async function createUserProfile(user: User, displayName: string, institution?: string, role: string = 'participant') {
     return fetchApi("/api/auth/create-profile", {
         method: "POST",
         body: JSON.stringify({
             uid: user.uid,
             email: user.email,
             display_name: displayName || user.displayName || "User",
-            role: "participant",
+            role,
             institution: institution || null,
         }),
     });
@@ -118,6 +122,7 @@ export {
     app,
     auth,
     db,
+    storage,
     API_URL,
     signInWithEmail,
     signUpWithEmail,

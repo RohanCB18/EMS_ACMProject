@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,15 @@ import {
     verifyTokenWithBackend,
 } from '@/lib/firebase';
 
+const roleOptions = [
+    { value: 'admin', label: 'Admin', description: 'Manage the event, users, and dashboards.' },
+    { value: 'participant', label: 'Participant', description: 'Join a team, submit your project, and view your workspace.' },
+    { value: 'judge', label: 'Judge', description: 'Evaluate teams, review submissions, and submit scored feedback.' },
+    { value: 'volunteer', label: 'Volunteer', description: 'Support event operations and manage logistics.' },
+] as const;
+
+export type AuthRole = (typeof roleOptions)[number]['value'];
+
 export default function RegisterPage() {
     const router = useRouter();
     const [firstName, setFirstName] = useState('');
@@ -22,9 +31,25 @@ export default function RegisterPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [institution, setInstitution] = useState('');
+    const [selectedRole, setSelectedRole] = useState<AuthRole>('participant');
     const [loading, setLoading] = useState(false);
     const [oauthLoading, setOauthLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const roleParam = searchParams.get('role')?.toLowerCase();
+        if (roleParam && roleOptions.some((option) => option.value === roleParam)) {
+            setSelectedRole(roleParam as AuthRole);
+        }
+    }, []);
+
+    const getRedirectTarget = (role: string) => {
+        if (role === 'admin') return '/dashboard/admin/overview';
+        if (role === 'judge') return '/dashboard/judge';
+        if (role === 'volunteer') return '/dashboard/volunteer';
+        return '/dashboard/participant';
+    };
 
     const handleEmailRegister = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,22 +57,16 @@ export default function RegisterPage() {
         setLoading(true);
 
         try {
-            // Validate password
             if (password.length < 6) {
                 setError('Password must be at least 6 characters');
                 setLoading(false);
                 return;
             }
 
-            // Create Firebase auth account
             const user = await signUpWithEmail(email, password);
-
-            // Create profile in Firestore via backend
             const displayName = `${firstName} ${lastName}`.trim();
-            await createUserProfile(user, displayName, institution || undefined);
-
-            // Redirect to participant dashboard
-            router.push('/dashboard/participant/overview');
+            await createUserProfile(user, displayName, institution || undefined, selectedRole);
+            router.push(getRedirectTarget(selectedRole));
         } catch (err: unknown) {
             const error = err as { code?: string; message?: string };
             if (error.code === 'auth/email-already-in-use') {
@@ -73,19 +92,17 @@ export default function RegisterPage() {
                 ? await signInWithGoogle()
                 : await signInWithGitHub();
 
-            // Check if profile already exists
             const result = await verifyTokenWithBackend(user);
-
             if (!result.profile) {
-                // First-time OAuth — create profile
                 await createUserProfile(
                     user,
                     user.displayName || 'User',
-                    undefined
+                    undefined,
+                    selectedRole,
                 );
             }
 
-            router.push('/dashboard/participant/overview');
+            router.push(getRedirectTarget(selectedRole));
         } catch (err: unknown) {
             const error = err as { code?: string; message?: string };
             if (error.code === 'auth/popup-closed-by-user') {
@@ -193,6 +210,25 @@ export default function RegisterPage() {
                                         onChange={(e) => setInstitution(e.target.value)}
                                         disabled={loading}
                                     />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Choose your role</Label>
+                                    <div className="grid gap-2">
+                                        {roleOptions.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setSelectedRole(option.value)}
+                                                className={`rounded-lg border p-4 text-left transition ${selectedRole === option.value ? 'border-primary bg-primary/10' : 'border-muted hover:border-primary/80'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="font-semibold">{option.label}</span>
+                                                    {selectedRole === option.value ? <span className="text-xs uppercase tracking-[0.2em] text-primary">Selected</span> : null}
+                                                </div>
+                                                <p className="text-sm text-muted-foreground mt-1">{option.description}</p>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                                 <Button type="submit" className="w-full" disabled={loading}>
                                     {loading ? (

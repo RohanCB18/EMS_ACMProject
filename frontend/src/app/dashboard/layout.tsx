@@ -1,4 +1,6 @@
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
+'use client';
+
+import { RouteGuard } from '@/components/RouteGuard';
 
 export default function DashboardRootLayout({
     children,
@@ -6,8 +8,8 @@ export default function DashboardRootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <DashboardLayout role="participant">
+        <RouteGuard>
             {children}
-        </DashboardLayout>
+        </RouteGuard>
     );
 }

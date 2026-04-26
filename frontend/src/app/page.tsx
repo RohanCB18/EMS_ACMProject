@@ -43,12 +43,12 @@ export default function LandingPage() {
               </div>
               <div className="w-full max-w-sm space-y-2 mt-8 flex flex-col sm:flex-row gap-2 justify-center">
                 <Button size="lg" className="w-full sm:w-auto h-12 px-8" asChild>
-                  <Link href="/auth/register">
+                  <Link href="/auth/register?role=admin">
                     Host an Event <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
                 <Button size="lg" variant="outline" className="w-full sm:w-auto h-12 px-8" asChild>
-                  <Link href="/auth/register">
+                  <Link href="/auth/register?role=participant">
                     Join as Participant
                   </Link>
                 </Button>

@@ -22,70 +22,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Trophy, UserPlus, Users, Scale, BarChart3, Shuffle, Download,
     Plus, Trash2, AlertTriangle, CheckCircle2, Clock, Star, Target,
-    Gavel, Award, Eye, Flag,
+    Gavel, Award, Eye, Flag, Save,
 } from 'lucide-react';
+import { getAuth } from 'firebase/auth';
 
 // ─── Types ────────────────────────────────────────────────────
+// Types are now imported from the shared client
 
-interface Judge {
-    judge_id: string;
-    email: string;
-    name: string;
-    expertise_tags: string[];
-    organization?: string;
-    coi_flags: { project_id: string; reason: string; flagged_at: string }[];
-    assigned_count: number;
-    reviewed_count: number;
-    created_at?: string;
-}
-
-interface RubricCriteria {
-    id: string;
-    name: string;
-    weight: number;
-    max_score: number;
-    description?: string;
-}
-
-interface Allocation {
-    allocation_id: string;
-    judge_id: string;
-    judge_name: string;
-    project_id: string;
-    project_title: string;
-    track?: string;
-    status: 'assigned' | 'pending' | 'reviewed';
-    round: string;
-    assigned_at?: string;
-}
-
-interface ProjectRanking {
-    project_id: string;
-    project_title: string;
-    team_name?: string;
-    track?: string;
-    avg_weighted_score: number;
-    total_evaluations: number;
-    rank: number;
-    shortlisted: boolean;
-}
-
-// ─── API Configuration ───────────────────────────────────────
-
-const JUDGING_API = process.env.NEXT_PUBLIC_JUDGING_API_URL || 'http://localhost:8003';
-
-async function judgingFetch<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${JUDGING_API}${endpoint}`;
-    const headers = new Headers(options.headers);
-    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-
-    const res = await fetch(url, { ...options, headers });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
-    }
-    return res.json();
-}
+// Types are now imported from the shared client
+import { judgingApi } from '@/lib/api/judging';
+import type { Judge, Allocation, ProjectRanking, RubricCriteria } from '@/lib/api/judging';
 
 // ─── Expertise Tag Colors ────────────────────────────────────
 
@@ -144,84 +90,110 @@ export default function JudgingDashboard() {
     // ─── Allocation State ────────────────────────────────────
     const [allocations, setAllocations] = useState<Allocation[]>([]);
     const [isAllocating, setIsAllocating] = useState(false);
+    const [teams, setTeams] = useState<any[]>([]);
+    const [manualAllocOpen, setManualAllocOpen] = useState(false);
+    const [manualForm, setManualForm] = useState({ judge_id: '', project_id: '', round: 'round_1' });
+    const [autoAllocOpen, setAutoAllocOpen] = useState(false);
+    const [judgesPerProject, setJudgesPerProject] = useState(3);
 
     // ─── Ranking State ───────────────────────────────────────
     const [rankings, setRankings] = useState<ProjectRanking[]>([]);
     const [selectedRound, setSelectedRound] = useState('round_1');
 
-    // ─── Demo Data Generators ────────────────────────────────
+    // ─── Data Fetchers (Real API) ────────────────────────────
 
-    const loadDemoJudges = useCallback(() => {
-        const demo: Judge[] = [
-            { judge_id: 'j1', email: 'priya.sharma@iit.ac.in', name: 'Dr. Priya Sharma', expertise_tags: ['AI/ML', 'Data Science'], organization: 'IIT Delhi', coi_flags: [], assigned_count: 4, reviewed_count: 2, created_at: '2026-03-01T10:00:00Z' },
-            { judge_id: 'j2', email: 'rahul.verma@tech.com', name: 'Rahul Verma', expertise_tags: ['Web', 'Cloud'], organization: 'Google India', coi_flags: [], assigned_count: 5, reviewed_count: 5, created_at: '2026-03-01T11:00:00Z' },
-            { judge_id: 'j3', email: 'ananya.patel@startup.io', name: 'Ananya Patel', expertise_tags: ['Blockchain', 'Cybersecurity'], organization: 'Web3 Labs', coi_flags: [{ project_id: 'p3', reason: 'Team member is a family relation', flagged_at: '2026-03-02T09:00:00Z' }], assigned_count: 3, reviewed_count: 1, created_at: '2026-03-01T12:00:00Z' },
-            { judge_id: 'j4', email: 'vikram.singh@university.edu', name: 'Prof. Vikram Singh', expertise_tags: ['IoT', 'Mobile'], organization: 'BITS Pilani', coi_flags: [], assigned_count: 4, reviewed_count: 3, created_at: '2026-03-02T08:00:00Z' },
-            { judge_id: 'j5', email: 'sneha.reddy@innovation.co', name: 'Sneha Reddy', expertise_tags: ['AI/ML', 'Game Dev'], organization: 'Innovation Hub', coi_flags: [], assigned_count: 4, reviewed_count: 4, created_at: '2026-03-02T09:00:00Z' },
-        ];
-        setJudges(demo);
+    const EVENT_ID = 'default_event';
+    const [loading, setLoading] = useState(true);
+
+    const fetchJudges = useCallback(async () => {
+        try {
+            const data = await judgingApi.listJudges();
+            setJudges(data);
+        } catch (err: any) {
+            console.error('Failed to fetch judges:', err);
+        }
     }, []);
 
-    const loadDemoAllocations = useCallback(() => {
-        const demo: Allocation[] = [
-            { allocation_id: 'a1', judge_id: 'j1', judge_name: 'Dr. Priya Sharma', project_id: 'p1', project_title: 'AI-Powered Health Monitor', track: 'AI/ML', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a2', judge_id: 'j1', judge_name: 'Dr. Priya Sharma', project_id: 'p2', project_title: 'Smart Campus Navigator', track: 'IoT', status: 'assigned', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a3', judge_id: 'j2', judge_name: 'Rahul Verma', project_id: 'p1', project_title: 'AI-Powered Health Monitor', track: 'AI/ML', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a4', judge_id: 'j2', judge_name: 'Rahul Verma', project_id: 'p4', project_title: 'DeFi Portfolio Tracker', track: 'Blockchain', status: 'assigned', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a5', judge_id: 'j3', judge_name: 'Ananya Patel', project_id: 'p4', project_title: 'DeFi Portfolio Tracker', track: 'Blockchain', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a6', judge_id: 'j4', judge_name: 'Prof. Vikram Singh', project_id: 'p2', project_title: 'Smart Campus Navigator', track: 'IoT', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a7', judge_id: 'j4', judge_name: 'Prof. Vikram Singh', project_id: 'p5', project_title: 'Eco Drive Optimizer', track: 'Mobile', status: 'assigned', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a8', judge_id: 'j5', judge_name: 'Sneha Reddy', project_id: 'p1', project_title: 'AI-Powered Health Monitor', track: 'AI/ML', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-            { allocation_id: 'a9', judge_id: 'j5', judge_name: 'Sneha Reddy', project_id: 'p5', project_title: 'Eco Drive Optimizer', track: 'Mobile', status: 'reviewed', round: 'round_1', assigned_at: '2026-03-03T10:00:00Z' },
-        ];
-        setAllocations(demo);
+    const fetchAllocations = useCallback(async () => {
+        try {
+            const data = await judgingApi.listAllocations();
+            setAllocations(data);
+        } catch (err: any) {
+            console.error('Failed to fetch allocations:', err);
+        }
     }, []);
 
-    const loadDemoRankings = useCallback(() => {
-        const demo: ProjectRanking[] = [
-            { project_id: 'p1', project_title: 'AI-Powered Health Monitor', team_name: 'Team Alpha', track: 'AI/ML', avg_weighted_score: 87.5, total_evaluations: 3, rank: 1, shortlisted: true },
-            { project_id: 'p4', project_title: 'DeFi Portfolio Tracker', team_name: 'Chain Gang', track: 'Blockchain', avg_weighted_score: 82.3, total_evaluations: 2, rank: 2, shortlisted: true },
-            { project_id: 'p2', project_title: 'Smart Campus Navigator', team_name: 'Nav Squad', track: 'IoT', avg_weighted_score: 78.9, total_evaluations: 2, rank: 3, shortlisted: false },
-            { project_id: 'p5', project_title: 'Eco Drive Optimizer', team_name: 'Green Wheels', track: 'Mobile', avg_weighted_score: 75.1, total_evaluations: 2, rank: 4, shortlisted: false },
-            { project_id: 'p3', project_title: 'Secure Chat Protocol', team_name: 'CipherX', track: 'Cybersecurity', avg_weighted_score: 71.0, total_evaluations: 1, rank: 5, shortlisted: false },
-        ];
-        setRankings(demo);
+    const fetchRubric = useCallback(async () => {
+        try {
+            const rubrics = await judgingApi.getRubrics(EVENT_ID);
+            if (rubrics && rubrics.length > 0) {
+                setCriteria(rubrics[0].criteria);
+            }
+        } catch (err: any) {
+            console.error('Failed to fetch rubric:', err);
+        }
+    }, [EVENT_ID]);
+
+    const fetchTeams = useCallback(async () => {
+        try {
+            const data = await judgingApi.listTeams();
+            setTeams(data);
+        } catch (err: any) {
+            console.error('Failed to fetch teams:', err);
+        }
     }, []);
+
+    const fetchRankings = useCallback(async (round: string = 'round_1') => {
+        try {
+            const data = await judgingApi.getRankings(EVENT_ID, round);
+            setRankings(data.rankings || []);
+        } catch (err: any) {
+            console.error('Failed to fetch rankings:', err);
+            setRankings([]);
+        }
+    }, [EVENT_ID]);
 
     useEffect(() => {
-        loadDemoJudges();
-        loadDemoAllocations();
-        loadDemoRankings();
-    }, [loadDemoJudges, loadDemoAllocations, loadDemoRankings]);
+        const loadAll = async () => {
+            setLoading(true);
+            await Promise.all([fetchJudges(), fetchAllocations(), fetchRankings(selectedRound), fetchRubric(), fetchTeams()]);
+            setLoading(false);
+        };
+        loadAll();
+    }, [fetchJudges, fetchAllocations, fetchRankings, fetchRubric, fetchTeams, selectedRound]);
 
     // ─── Action Handlers ─────────────────────────────────────
 
-    const handleInviteJudge = () => {
+    const handleInviteJudge = async () => {
         if (!inviteForm.name || !inviteForm.email) {
             toast.error('Name and email are required');
             return;
         }
         const tags = inviteForm.tags.split(',').map(t => t.trim()).filter(Boolean);
-        const newJudge: Judge = {
-            judge_id: `j${Date.now()}`,
-            email: inviteForm.email,
-            name: inviteForm.name,
-            expertise_tags: tags,
-            organization: inviteForm.organization || undefined,
-            coi_flags: [],
-            assigned_count: 0,
-            reviewed_count: 0,
-            created_at: new Date().toISOString(),
-        };
-        setJudges(prev => [...prev, newJudge]);
-        setInviteForm({ name: '', email: '', organization: '', tags: '' });
-        setInviteOpen(false);
-        toast.success(`Judge ${newJudge.name} invited successfully`);
+        try {
+            const newJudge = await judgingApi.inviteJudge({
+                email: inviteForm.email,
+                name: inviteForm.name,
+                expertise_tags: tags,
+                organization: inviteForm.organization || undefined,
+            });
+            setJudges(prev => [...prev, newJudge]);
+            setInviteForm({ name: '', email: '', organization: '', tags: '' });
+            setInviteOpen(false);
+            toast.success(`Invitation email sent to ${newJudge.name} (${inviteForm.email})!`);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to invite judge');
+        }
     };
 
-    const handleRemoveJudge = (judgeId: string) => {
-        setJudges(prev => prev.filter(j => j.judge_id !== judgeId));
-        toast.success('Judge removed');
+    const handleRemoveJudge = async (judgeId: string) => {
+        try {
+            await judgingApi.removeJudge(judgeId);
+            setJudges(prev => prev.filter(j => j.judge_id !== judgeId));
+            toast.success('Judge removed');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to remove judge');
+        }
     };
 
     const handleAddCriteria = () => {
@@ -245,21 +217,139 @@ export default function JudgingDashboard() {
         setCriteria(prev => prev.filter(c => c.id !== id));
     };
 
+    const handleSaveRubric = async () => {
+        if (Math.abs(totalWeight - 100) > 0.01) {
+            toast.error('Criteria weights must sum to 100% before saving.');
+            return;
+        }
+        try {
+            await judgingApi.createRubric({
+                event_id: EVENT_ID,
+                name: 'Main Rubric',
+                criteria: criteria,
+                round: 'round_1',
+            });
+            toast.success('Rubric saved successfully!');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to save rubric');
+        }
+    };
+
     const totalWeight = useMemo(() => criteria.reduce((sum, c) => sum + c.weight, 0), [criteria]);
 
     const handleAutoAllocate = async () => {
         setIsAllocating(true);
-        // Simulate allocation delay
-        await new Promise(r => setTimeout(r, 1500));
-        loadDemoAllocations();
-        setIsAllocating(false);
-        toast.success('Projects auto-allocated to judges successfully!');
+        try {
+            const result = await judgingApi.autoAllocate({ 
+                event_id: EVENT_ID, 
+                round: selectedRound,
+                judges_per_project: judgesPerProject
+            });
+            toast.success(result.message);
+            setAutoAllocOpen(false);
+            await fetchAllocations();
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to auto-allocate');
+        } finally {
+            setIsAllocating(false);
+        }
     };
 
-    const handleToggleShortlist = (projectId: string) => {
-        setRankings(prev => prev.map(r =>
+    const handleManualAllocate = async () => {
+        if (!manualForm.judge_id || !manualForm.project_id) {
+            toast.error('Please select both a judge and a project/team');
+            return;
+        }
+        setIsAllocating(true);
+        try {
+            await judgingApi.manualAllocate({
+                ...manualForm,
+                action: 'assign',
+            });
+            toast.success('Manual allocation created successfully');
+            setManualAllocOpen(false);
+            setManualForm({ judge_id: '', project_id: '', round: 'round_1' });
+            await fetchAllocations();
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to create manual allocation');
+        } finally {
+            setIsAllocating(false);
+        }
+    };
+
+    const handleExport = async () => {
+        try {
+            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (!user) throw new Error('Not authenticated');
+            const token = await user.getIdToken();
+
+            const response = await fetch(`${API_BASE}/api/judging/rankings/${EVENT_ID}/export?round=${selectedRound}&top_n=100`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) throw new Error('Failed to export results');
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rankings_${selectedRound}_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast.success('Results exported successfully');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to export results');
+        }
+    };
+
+    const handleSaveRankings = async () => {
+        try {
+            const result = await judgingApi.saveRankings(EVENT_ID, selectedRound);
+            toast.success(result.message);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to save rankings');
+        }
+    };
+    const handleRemoveAllocation = async (alloc: Allocation) => {
+        if (!confirm(`Remove assignment of "${alloc.project_title}" from judge ${alloc.judge_name}?`)) return;
+        try {
+            await judgingApi.manualAllocate({
+                judge_id: alloc.judge_id,
+                project_id: alloc.project_id,
+                allocation_id: alloc.allocation_id,
+                action: 'remove',
+            });
+            toast.success('Allocation removed');
+            await fetchAllocations();
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to remove allocation');
+        }
+    };
+
+    const handleToggleShortlist = async (projectId: string) => {
+        const newRankings = rankings.map(r =>
             r.project_id === projectId ? { ...r, shortlisted: !r.shortlisted } : r
-        ));
+        );
+        setRankings(newRankings);
+
+        const shortlistedIds = newRankings.filter(r => r.shortlisted).map(r => r.project_id);
+
+        try {
+            await judgingApi.saveShortlist(EVENT_ID, {
+                round: selectedRound,
+                advance_to: 'finals',
+                project_ids: shortlistedIds,
+            });
+            toast.success('Shortlist updated');
+        } catch (err: any) {
+            toast.error('Failed to save shortlist');
+        }
     };
 
     // ─── Computed Stats ──────────────────────────────────────
@@ -289,7 +379,7 @@ export default function JudgingDashboard() {
                     <p className="text-muted-foreground">Manage judges, rubrics, allocations, and rankings.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export Results</Button>
+                    <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export Results</Button>
                 </div>
             </div>
 
@@ -454,14 +544,19 @@ export default function JudgingDashboard() {
                     <div className="grid gap-4 lg:grid-cols-3">
                         {/* Current Rubric */}
                         <Card className="lg:col-span-2">
-                            <CardHeader>
-                                <CardTitle>Scoring Rubric</CardTitle>
-                                <CardDescription>
-                                    Define evaluation criteria and their weights.
-                                    <span className={`ml-2 font-semibold ${Math.abs(totalWeight - 100) < 0.01 ? 'text-green-600' : 'text-destructive'}`}>
-                                        Total: {totalWeight}%
-                                    </span>
-                                </CardDescription>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>Scoring Rubric</CardTitle>
+                                    <CardDescription>
+                                        Define evaluation criteria and their weights.
+                                        <span className={`ml-2 font-semibold ${Math.abs(totalWeight - 100) < 0.01 ? 'text-green-600' : 'text-destructive'}`}>
+                                            Total: {totalWeight}%
+                                        </span>
+                                    </CardDescription>
+                                </div>
+                                <Button onClick={handleSaveRubric} disabled={Math.abs(totalWeight - 100) > 0.01}>
+                                    <Save className="mr-2 h-4 w-4" /> Save Rubric
+                                </Button>
                             </CardHeader>
                             <CardContent>
                                 <Table>
@@ -539,10 +634,96 @@ export default function JudgingDashboard() {
                                 <CardTitle>Project Allocations</CardTitle>
                                 <CardDescription>Assign projects to judges automatically or manually override.</CardDescription>
                             </div>
-                            <Button onClick={handleAutoAllocate} disabled={isAllocating}>
-                                <Shuffle className={`mr-2 h-4 w-4 ${isAllocating ? 'animate-spin' : ''}`} />
-                                {isAllocating ? 'Allocating...' : 'Auto-Allocate'}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Dialog open={manualAllocOpen} onOpenChange={setManualAllocOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline"><Plus className="mr-2 h-4 w-4" /> Manual Allocate</Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Manual Allocation</DialogTitle>
+                                            <DialogDescription>Assign a specific team to a judge for evaluation.</DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4 pt-2">
+                                            <div className="space-y-2">
+                                                <Label>Select Team</Label>
+                                                <Select value={manualForm.project_id} onValueChange={val => setManualForm(p => ({ ...p, project_id: val }))}>
+                                                    <SelectTrigger><SelectValue placeholder="Select a team" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {teams.map(t => (
+                                                            <SelectItem key={t.team_id} value={t.team_id}>{t.name} ({t.track})</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Select Judge</Label>
+                                                <Select value={manualForm.judge_id} onValueChange={val => setManualForm(p => ({ ...p, judge_id: val }))}>
+                                                    <SelectTrigger><SelectValue placeholder="Select a judge" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {judges.map(j => (
+                                                            <SelectItem key={j.judge_id} value={j.judge_id}>{j.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Evaluation Round</Label>
+                                                <Select value={manualForm.round} onValueChange={val => setManualForm(p => ({ ...p, round: val }))}>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="round_1">Round 1</SelectItem>
+                                                        <SelectItem value="finals">Finals</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setManualAllocOpen(false)}>Cancel</Button>
+                                            <Button onClick={handleManualAllocate} disabled={isAllocating}>
+                                                {isAllocating ? 'Allocating...' : 'Assign Project'}
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+
+                                <Dialog open={autoAllocOpen} onOpenChange={setAutoAllocOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button>
+                                            <Shuffle className="mr-2 h-4 w-4" /> Auto-Allocate
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>Intelligent Auto-Allocation</DialogTitle>
+                                            <DialogDescription>Assign projects to judges using a load-balancing algorithm.</DialogDescription>
+                                        </DialogHeader>
+                                        <div className="space-y-4 pt-2">
+                                            <div className="space-y-2">
+                                                <Label>Judges per Project</Label>
+                                                <Input type="number" min={1} max={10} value={judgesPerProject} onChange={e => setJudgesPerProject(Number(e.target.value) || 1)} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Evaluation Round</Label>
+                                                <Select value={selectedRound} onValueChange={setSelectedRound}>
+                                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="round_1">Round 1</SelectItem>
+                                                        <SelectItem value="finals">Finals (Shortlisted only)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-xs text-muted-foreground mt-1">If Finals is selected, only shortlisted projects will be assigned.</p>
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button variant="outline" onClick={() => setAutoAllocOpen(false)}>Cancel</Button>
+                                            <Button onClick={handleAutoAllocate} disabled={isAllocating}>
+                                                {isAllocating ? 'Allocating...' : 'Start Allocation'}
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -554,12 +735,13 @@ export default function JudgingDashboard() {
                                         <TableHead>Round</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead className="text-right">Assigned At</TableHead>
+                                        <TableHead className="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {allocations.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Shuffle className="h-6 w-6 opacity-40" />
                                                     <p className="text-sm">No allocations yet. Click &quot;Auto-Allocate&quot; to assign projects.</p>
@@ -578,6 +760,16 @@ export default function JudgingDashboard() {
                                             <TableCell className="text-right text-sm text-muted-foreground">
                                                 {alloc.assigned_at ? new Date(alloc.assigned_at).toLocaleDateString() : '—'}
                                             </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-destructive hover:bg-destructive/10"
+                                                    onClick={() => handleRemoveAllocation(alloc)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -592,7 +784,11 @@ export default function JudgingDashboard() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Live Rankings</CardTitle>
-                                <CardDescription>Aggregated scores from all judge evaluations. Toggle shortlist status for each project.</CardDescription>
+                                <CardDescription>
+                                    {selectedRound === 'round_1'
+                                        ? 'Aggregated scores from Round 1. Select teams to advance to the Finals round.'
+                                        : 'Final round rankings. These are the results.'}
+                                </CardDescription>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Select value={selectedRound} onValueChange={setSelectedRound}>
@@ -604,7 +800,12 @@ export default function JudgingDashboard() {
                                         <SelectItem value="finals">Finals</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export</Button>
+                                <Button variant="outline" onClick={handleExport}><Download className="mr-2 h-4 w-4" /> Export</Button>
+                                {selectedRound === 'finals' && (
+                                    <Button onClick={handleSaveRankings} className="bg-green-600 hover:bg-green-700 text-white">
+                                        <CheckCircle2 className="mr-2 h-4 w-4" /> Save Results
+                                    </Button>
+                                )}
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -617,13 +818,13 @@ export default function JudgingDashboard() {
                                         <TableHead>Track</TableHead>
                                         <TableHead className="text-center">Evaluations</TableHead>
                                         <TableHead className="text-center">Avg. Score</TableHead>
-                                        <TableHead className="text-center">Shortlisted</TableHead>
+                                        {selectedRound === 'round_1' && <TableHead className="text-center">Advance to Finals</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {rankings.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                            <TableCell colSpan={selectedRound === 'round_1' ? 7 : 6} className="h-32 text-center text-muted-foreground">
                                                 <div className="flex flex-col items-center gap-2">
                                                     <Trophy className="h-6 w-6 opacity-40" />
                                                     <p className="text-sm">No rankings available. Scores must be submitted first.</p>
@@ -653,16 +854,18 @@ export default function JudgingDashboard() {
                                                     {r.avg_weighted_score.toFixed(1)}%
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-center">
-                                                <Button
-                                                    variant={r.shortlisted ? 'default' : 'outline'}
-                                                    size="sm"
-                                                    className={r.shortlisted ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
-                                                    onClick={() => handleToggleShortlist(r.project_id)}
-                                                >
-                                                    {r.shortlisted ? <><CheckCircle2 className="mr-1 h-3 w-3" /> Yes</> : 'Select'}
-                                                </Button>
-                                            </TableCell>
+                                            {selectedRound === 'round_1' && (
+                                                <TableCell className="text-center">
+                                                    <Button
+                                                        variant={r.shortlisted ? 'default' : 'outline'}
+                                                        size="sm"
+                                                        className={r.shortlisted ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                                                        onClick={() => handleToggleShortlist(r.project_id)}
+                                                    >
+                                                        {r.shortlisted ? <><CheckCircle2 className="mr-1 h-3 w-3" /> Yes</> : 'Select'}
+                                                    </Button>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>
