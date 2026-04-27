@@ -4,6 +4,7 @@ import React from 'react';
 import { Bell, Menu, Search, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { DarkModeToggle } from '@/components/ui/dark-mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -64,6 +65,8 @@ export function Header({ role = 'participant' }: HeaderProps) {
                 <div className="hidden text-sm font-medium border rounded-full px-3 py-1 bg-yellow-100/50 text-yellow-800 border-yellow-200 lg:block">
                     Phase: Registration Open
                 </div>
+
+                <DarkModeToggle />
 
                 <Button variant="ghost" size="icon" className="relative">
                     <Bell className="h-5 w-5" />

@@ -45,3 +45,5 @@ backend/*.json
 backend/serviceAccountKey.json
 backend/*firebase-adminsdk*
 *.env.local
+"venv/" 
+venv/
