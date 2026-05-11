@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Upload, Github, ExternalLink, Clock, CheckCircle2, X, Link2, Unlink, Loader2, Lock } from 'lucide-react';
 import { setBApi, type Phase } from '@/lib/api/set-b';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 
 export default function WorkspacePage() {
     const [repoUrl, setRepoUrl] = useState('');

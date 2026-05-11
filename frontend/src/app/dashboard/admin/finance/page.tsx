@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Upload, DollarSign, ArrowUpRight, ArrowDownRight, RefreshCw, Landmark, Receipt, CheckCircle2, Camera } from 'lucide-react';
+import { Download, Upload, Landmark, ArrowUpRight, ArrowDownRight, RefreshCw, Receipt, CheckCircle2, Camera } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, where, doc, updateDoc, orderBy } from 'firebase/firestore';
@@ -227,10 +227,10 @@ export default function FinanceDashboard() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Budget</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <Landmark className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">₹1,00,000.00</div>
+                        <div className="text-2xl font-bold">₹10,00,000.00</div>
                         <p className="text-xs text-muted-foreground">From 4 Sponsors</p>
                     </CardContent>
                 </Card>

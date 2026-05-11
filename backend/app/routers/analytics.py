@@ -76,7 +76,7 @@ async def get_overview_stats(
         attendance_rate=attendance_rate,
         tickets_resolved=total_resolved_tickets,
         projects_submitted=projects_count,
-        finance_reconciled=12450.0,
+        finance_reconciled=1245000.0,
         top_tracks=top_tracks if top_tracks else [
             {"name": "General", "count": total_teams}
         ]

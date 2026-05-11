@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Menu, Search, User } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Sidebar } from './Sidebar';
+import { setBApi } from '@/lib/api/set-b';
 
 interface HeaderProps {
     role?: 'admin' | 'participant' | 'judge' | 'volunteer';
@@ -26,6 +27,8 @@ interface HeaderProps {
 export function Header({ role = 'participant' }: HeaderProps) {
     const router = useRouter();
     const { profile, signOut } = useAuth();
+    const [currentPhase, setCurrentPhase] = useState<string>('Loading...');
+
     const displayName = profile?.display_name || 'Guest User';
     const initials = displayName
         .split(' ')
@@ -33,6 +36,28 @@ export function Header({ role = 'participant' }: HeaderProps) {
         .map((part) => part[0].toUpperCase())
         .slice(0, 2)
         .join('') || 'GU';
+
+    useEffect(() => {
+        const fetchPhase = async () => {
+            try {
+                const res = await setBApi.getCurrentPhase();
+                if ('phase' in res && res.phase) {
+                    setCurrentPhase(res.phase.name);
+                } else if ('name' in res) {
+                    setCurrentPhase((res as any).name);
+                } else {
+                    setCurrentPhase('No Active Phase');
+                }
+            } catch (err) {
+                console.error('Failed to fetch phase in header:', err);
+                setCurrentPhase('Error');
+            }
+        };
+        fetchPhase();
+        // Refresh every minute
+        const interval = setInterval(fetchPhase, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
@@ -63,7 +88,7 @@ export function Header({ role = 'participant' }: HeaderProps) {
 
             <div className="flex items-center gap-4 ml-auto sm:ml-0">
                 <div className="hidden text-sm font-medium border rounded-full px-3 py-1 bg-yellow-100/50 text-yellow-800 border-yellow-200 lg:block">
-                    Phase: Registration Open
+                    Phase: {currentPhase}
                 </div>
 
                 <DarkModeToggle />

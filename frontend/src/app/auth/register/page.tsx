@@ -128,7 +128,7 @@ export default function RegisterPage() {
                     <blockquote className="space-y-2 text-primary-foreground">
                         <h2 className="text-3xl font-bold">Join the next big Hackathon.</h2>
                         <p className="text-lg opacity-90 mt-4 max-w-md">
-                            Register now to access the dashboard, form a team, and submit your project. The $10,000 prize pool is waiting.
+                            Register now to access the dashboard, form a team, and submit your project. The ₹1,00,000 prize pool is waiting.
                         </p>
                     </blockquote>
                 </div>

@@ -70,7 +70,7 @@ export default function AdminOverviewPage() {
                         <Activity className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${stats?.finance_reconciled.toLocaleString()}</div>
+                        <div className="text-2xl font-bold">₹{stats?.finance_reconciled.toLocaleString()}</div>
                         <p className="text-xs text-muted-foreground">Sponsorship funds</p>
                     </CardContent>
                 </Card>

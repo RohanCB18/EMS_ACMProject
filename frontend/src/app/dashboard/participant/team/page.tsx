@@ -379,9 +379,9 @@ export default function TeamFormationPage() {
             </div>
 
             {error && (
-                <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-md">
-                    {error}
-                    <Button variant="ghost" size="sm" className="ml-2" onClick={() => setError(null)}>✕</Button>
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-md flex justify-between items-center">
+                    <span>{typeof error === 'string' ? error : (error as any).message || JSON.stringify(error)}</span>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setError(null)}>✕</Button>
                 </div>
             )}
 
