@@ -34,7 +34,7 @@ export default function LoginPage() {
     const getRedirectTarget = (role?: string) => {
         if (!role) return '/auth/register';
         if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
-            return '/dashboard/admin/overview';
+            return '/dashboard/admin/roles';
         }
         if (role === 'judge') {
             return '/dashboard/judge';

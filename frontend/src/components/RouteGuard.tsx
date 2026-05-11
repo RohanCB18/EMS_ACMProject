@@ -29,7 +29,7 @@ export function RouteGuard({ children, allowedRoles }: RouteGuardProps) {
             const role = profile.role.toLowerCase();
             if (!allowedRoles.includes(role)) {
                 if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
-                    router.replace('/dashboard/admin/overview');
+                    router.replace('/dashboard/admin/roles');
                 } else if (role === 'judge') {
                     router.replace('/dashboard/judge');
                 } else if (role === 'participant') {

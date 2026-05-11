@@ -45,7 +45,7 @@ export default function RegisterPage() {
     }, []);
 
     const getRedirectTarget = (role: string) => {
-        if (role === 'admin') return '/dashboard/admin/overview';
+        if (role === 'admin') return '/dashboard/admin/roles';
         if (role === 'judge') return '/dashboard/judge';
         if (role === 'volunteer') return '/dashboard/volunteer';
         return '/dashboard/participant';

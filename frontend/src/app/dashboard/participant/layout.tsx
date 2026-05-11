@@ -16,7 +16,7 @@ export default function ParticipantLayout({
     useEffect(() => {
         const role = profile?.role?.toLowerCase();
         if (!loading && (role === 'admin' || role === 'organizer' || role === 'super_admin')) {
-            router.push('/dashboard/admin/overview');
+            router.push('/dashboard/admin/roles');
         }
     }, [profile, loading, router]);
 

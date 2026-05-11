@@ -263,7 +263,7 @@ export default function DashboardPage() {
         const role = profile?.role?.toLowerCase();
         if (!authLoading) {
             if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
-                router.push('/dashboard/admin/overview');
+                router.push('/dashboard/admin/roles');
                 return;
             }
             if (role === 'judge') {

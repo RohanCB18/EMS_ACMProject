@@ -5,29 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { MessageCircle, AlertCircle, Clock, CheckCircle2, Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { MessageCircle, AlertCircle, Clock, CheckCircle2, RefreshCw } from "lucide-react";
 
-import { setDApi, SupportTicket, TicketStatus, TicketPriority } from "@/lib/api/set-d";
+import { setDApi, SupportTicket, TicketStatus } from "@/lib/api/set-d";
 import { toast } from "sonner";
 
-export default function HelpdeskPage() {
+export default function AdminHelpdeskPage() {
     const [tickets, setTickets] = useState<SupportTicket[]>([]);
     const [loading, setLoading] = useState(true);
-    const [createOpen, setCreateOpen] = useState(false);
-    const [newTicket, setNewTicket] = useState({ title: "", description: "", category: "technical", priority: "medium" as TicketPriority });
 
     const fetchTickets = async () => {
+        setLoading(true);
         try {
             const data = await setDApi.listTickets();
             setTickets(data);
@@ -40,28 +28,6 @@ export default function HelpdeskPage() {
 
     useEffect(() => { fetchTickets(); }, []);
 
-    const handleCreateTicket = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            await setDApi.createTicket({
-                title: newTicket.title.trim(),
-                description: newTicket.description.trim(),
-                category: newTicket.category,
-                priority: newTicket.priority,
-                status: "open",
-                raised_by_uid: "",
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-            });
-            toast.success("Ticket created!");
-            setNewTicket({ title: "", description: "", category: "technical", priority: "medium" });
-            setCreateOpen(false);
-            fetchTickets();
-        } catch (error: any) {
-            toast.error(error.message || "Failed to create ticket");
-        }
-    };
-
     const handleUpdateStatus = async (ticketId: string, status: TicketStatus) => {
         try {
             await setDApi.updateTicket(ticketId, { status });
@@ -72,19 +38,8 @@ export default function HelpdeskPage() {
         }
     };
 
-    const handleUpdatePriority = async (ticketId: string, priority: TicketPriority) => {
-        try {
-            await setDApi.updateTicket(ticketId, { priority });
-            toast.success(`Priority set to ${priority}`);
-            fetchTickets();
-        } catch (error: any) {
-            toast.error(error.message || "Failed to update priority");
-        }
-    };
-
     const stats = {
         open: tickets.filter(t => t.status === "open").length,
-        urgent: tickets.filter(t => t.priority === "urgent").length,
         inProgress: tickets.filter(t => t.status === "in_progress").length,
         resolved: tickets.filter(t => t.status === "resolved").length,
     };
@@ -94,53 +49,13 @@ export default function HelpdeskPage() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">Helpdesk</h1>
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                    <DialogTrigger asChild>
-                        <Button><Plus className="w-4 h-4 mr-2" />Create Ticket</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>Create New Ticket</DialogTitle></DialogHeader>
-                        <form onSubmit={handleCreateTicket} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Title</Label>
-                                <Input value={newTicket.title} onChange={e => setNewTicket({ ...newTicket, title: e.target.value })} placeholder="Brief issue summary" required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Description</Label>
-                                <Textarea value={newTicket.description} onChange={e => setNewTicket({ ...newTicket, description: e.target.value })} placeholder="Detailed description of the issue..." required />
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>Category</Label>
-                                    <Select value={newTicket.category} onValueChange={v => setNewTicket({ ...newTicket, category: v })}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="technical">Technical</SelectItem>
-                                            <SelectItem value="logistics">Logistics</SelectItem>
-                                            <SelectItem value="query">General Query</SelectItem>
-                                            <SelectItem value="network">Network/WiFi</SelectItem>
-                                            <SelectItem value="food">Food/Refreshments</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Priority</Label>
-                                    <Select value={newTicket.priority} onValueChange={v => setNewTicket({ ...newTicket, priority: v as TicketPriority })}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="low">Low</SelectItem>
-                                            <SelectItem value="medium">Medium</SelectItem>
-                                            <SelectItem value="high">High</SelectItem>
-                                            <SelectItem value="urgent">Urgent</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <Button type="submit" className="w-full">Submit Ticket</Button>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Helpdesk</h1>
+                    <p className="text-muted-foreground">View and manage all support tickets raised by participants.</p>
+                </div>
+                <Button variant="outline" onClick={fetchTickets}>
+                    <RefreshCw className="w-4 h-4 mr-2" />Refresh
+                </Button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -148,7 +63,7 @@ export default function HelpdeskPage() {
                     <CardHeader className="p-4">
                         <div className="flex items-center justify-between">
                             <AlertCircle className="w-5 h-5 text-yellow-600" />
-                            <Badge className="bg-yellow-500">{stats.urgent} Urgent</Badge>
+                            <Badge className="bg-yellow-500">Open</Badge>
                         </div>
                     </CardHeader>
                     <CardContent className="p-4 pt-0 text-center">
@@ -205,7 +120,7 @@ export default function HelpdeskPage() {
                                 <TableHead>ID</TableHead>
                                 <TableHead>Issue</TableHead>
                                 <TableHead>Raised By</TableHead>
-                                <TableHead>Priority</TableHead>
+                                <TableHead>Category</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
@@ -216,31 +131,18 @@ export default function HelpdeskPage() {
                                     <TableCell className="font-mono text-xs">{ticket.ticket_id?.substring(0, 8)}</TableCell>
                                     <TableCell>
                                         <div className="font-medium">{ticket.title}</div>
-                                        <div className="text-xs text-muted-foreground">{ticket.category} • {ticket.description?.substring(0, 60)}{(ticket.description?.length || 0) > 60 ? '…' : ''}</div>
+                                        <div className="text-xs text-muted-foreground">{ticket.description?.substring(0, 60)}{(ticket.description?.length || 0) > 60 ? '…' : ''}</div>
                                     </TableCell>
                                     <TableCell className="text-xs">{ticket.raised_by_uid?.substring(0, 12) || "—"}</TableCell>
                                     <TableCell>
-                                        <Select
-                                            value={ticket.priority}
-                                            onValueChange={(val) => handleUpdatePriority(ticket.ticket_id!, val as TicketPriority)}
-                                        >
-                                            <SelectTrigger className="h-7 w-24 text-xs">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="low">Low</SelectItem>
-                                                <SelectItem value="medium">Medium</SelectItem>
-                                                <SelectItem value="high">High</SelectItem>
-                                                <SelectItem value="urgent">Urgent</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Badge variant="outline" className="capitalize">{ticket.category}</Badge>
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant={ticket.status === "open" ? "default" : ticket.status === "in_progress" ? "secondary" : "outline"}>
-                                            {ticket.status}
+                                            {ticket.status === "open" ? "Open" : ticket.status === "in_progress" ? "In Progress" : "Resolved"}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-right space-x-1">
                                         {ticket.status === "open" && (
                                             <Button variant="ghost" size="sm" onClick={() => handleUpdateStatus(ticket.ticket_id!, "in_progress")}>Assign</Button>
                                         )}
@@ -252,7 +154,9 @@ export default function HelpdeskPage() {
                             ))}
                             {tickets.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No tickets found. Click "Create Ticket" to raise one.</TableCell>
+                                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        No tickets have been raised yet. Participants can raise tickets from their dashboard.
+                                    </TableCell>
                                 </TableRow>
                             )}
                         </TableBody>
