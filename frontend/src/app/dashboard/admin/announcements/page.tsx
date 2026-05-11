@@ -10,10 +10,8 @@
  *  - Redirects non-admins to /dashboard
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { setBApi, Announcement } from '@/lib/api/set-b';
 import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -241,27 +239,29 @@ export default function AdminAnnouncementsPage() {
 
     // Auth guard
     useEffect(() => {
-        if (!authLoading && profile?.role !== 'organizer' && profile?.role !== 'super_admin') {
+        if (!authLoading && profile?.role !== 'admin' && profile?.role !== 'organizer' && profile?.role !== 'super_admin') {
             router.replace('/dashboard');
         }
     }, [authLoading, profile, router]);
 
-    // Real-time announcements listener
-    useEffect(() => {
+    // Fetch announcements from backend API (bypasses Firestore security rules)
+    const fetchAnnouncements = useCallback(async () => {
         setAnnouncementsLoading(true);
-        const announcementsQ = query(
-            collection(db, 'announcements'),
-            orderBy('timestamp', 'desc')
-        );
-        const unsub = onSnapshot(announcementsQ, (snap) => {
-            setAnnouncements(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Announcement)));
+        try {
+            const data = await setBApi.listAnnouncements();
+            setAnnouncements(data);
+        } catch (err) {
+            console.error('Announcements fetch error:', err);
+        } finally {
             setAnnouncementsLoading(false);
-        }, (err) => {
-            console.error('Announcements error:', err);
-            setAnnouncementsLoading(false);
-        });
-        return () => unsub();
-    }, [refreshKey]);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchAnnouncements();
+        const interval = setInterval(fetchAnnouncements, 5000);
+        return () => clearInterval(interval);
+    }, [fetchAnnouncements, refreshKey]);
 
     const handleDelete = async (id: string) => {
         setDeleting(id);
@@ -275,7 +275,7 @@ export default function AdminAnnouncementsPage() {
         }
     };
 
-    if (authLoading || (!authLoading && profile?.role !== 'organizer' && profile?.role !== 'super_admin')) {
+    if (authLoading || (!authLoading && profile?.role !== 'admin' && profile?.role !== 'organizer' && profile?.role !== 'super_admin')) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 {authLoading ? (

@@ -1,15 +1,37 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Upload, Github, ExternalLink, Clock, CheckCircle2, X, Link2, Unlink } from 'lucide-react';
+import { Upload, Github, ExternalLink, Clock, CheckCircle2, X, Link2, Unlink, Loader2, Lock } from 'lucide-react';
+import { setBApi, type Phase } from '@/lib/api/set-b';
+import { toast } from 'sonner';
 
 export default function WorkspacePage() {
     const [repoUrl, setRepoUrl] = useState('');
     const [linkedRepo, setLinkedRepo] = useState<string | null>(null);
     const [showLinkForm, setShowLinkForm] = useState(false);
     const [repoError, setRepoError] = useState('');
+    const [currentPhase, setCurrentPhase] = useState<Phase | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchPhase = async () => {
+            try {
+                const phaseRes = await setBApi.getCurrentPhase();
+                if ('phase' in phaseRes && phaseRes.phase) {
+                    setCurrentPhase(phaseRes.phase);
+                } else if ('id' in phaseRes) {
+                    setCurrentPhase(phaseRes as Phase);
+                }
+            } catch (error) {
+                console.error('Failed to fetch current phase:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchPhase();
+    }, []);
 
     const validateGithubUrl = (url: string): boolean => {
         const githubRegex = /^https?:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+(\/.*)?$/;
@@ -17,6 +39,10 @@ export default function WorkspacePage() {
     };
 
     const handleLinkRepo = () => {
+        if (currentPhase?.featureFlags?.allowEdits === false) {
+            toast.error('Linking repository is locked in this phase.');
+            return;
+        }
         const trimmed = repoUrl.trim();
         if (!trimmed) {
             setRepoError('Please enter a repository URL.');
@@ -30,12 +56,26 @@ export default function WorkspacePage() {
         setRepoUrl('');
         setRepoError('');
         setShowLinkForm(false);
+        toast.success('Repository linked successfully!');
     };
 
     const handleUnlinkRepo = () => {
+        if (currentPhase?.featureFlags?.allowEdits === false) {
+            toast.error('Unlinking repository is locked in this phase.');
+            return;
+        }
         setLinkedRepo(null);
         setRepoUrl('');
         setRepoError('');
+        toast.info('Repository unlinked.');
+    };
+
+    const handleProjectSubmit = () => {
+        if (currentPhase?.featureFlags?.allowSubmission === false) {
+            toast.error('Submissions are currently closed.');
+            return;
+        }
+        toast.success('Project submitted successfully!');
     };
 
     // Extract owner/repo from GitHub URL for display
@@ -50,6 +90,17 @@ export default function WorkspacePage() {
         }
     };
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
+
+    const canEdit = currentPhase?.featureFlags?.allowEdits ?? true;
+    const canSubmit = currentPhase?.featureFlags?.allowSubmission ?? false;
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -57,8 +108,9 @@ export default function WorkspacePage() {
                     <h2 className="text-3xl font-bold tracking-tight">Workspace</h2>
                     <p className="text-muted-foreground">Manage your project submission and resources.</p>
                 </div>
-                <Button>
-                    <Upload className="mr-2 h-4 w-4" /> Submit Project
+                <Button onClick={handleProjectSubmit} disabled={!canSubmit}>
+                    {canSubmit ? <Upload className="mr-2 h-4 w-4" /> : <Lock className="mr-2 h-4 w-4" />}
+                    {canSubmit ? 'Submit Project' : 'Submissions Closed'}
                 </Button>
             </div>
 
@@ -73,7 +125,7 @@ export default function WorkspacePage() {
                             <span className="font-semibold">In Progress</span>
                         </div>
                         <p className="mt-2 text-sm text-muted-foreground">
-                            Your project has not been submitted yet. Start working on it!
+                            Phase: <span className="font-medium">{currentPhase?.name || 'Unknown'}</span>
                         </p>
                     </CardContent>
                 </Card>
@@ -100,14 +152,16 @@ export default function WorkspacePage() {
                                     {getRepoName(linkedRepo)}
                                     <ExternalLink className="h-3 w-3" />
                                 </a>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="px-0 h-auto mt-2 text-destructive hover:text-destructive"
-                                    onClick={handleUnlinkRepo}
-                                >
-                                    <Unlink className="mr-1 h-3.5 w-3.5" /> Unlink repository
-                                </Button>
+                                {canEdit && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="px-0 h-auto mt-2 text-destructive hover:text-destructive"
+                                        onClick={handleUnlinkRepo}
+                                    >
+                                        <Unlink className="mr-1 h-3.5 w-3.5" /> Unlink repository
+                                    </Button>
+                                )}
                             </>
                         ) : showLinkForm ? (
                             <div className="space-y-2">
@@ -122,6 +176,7 @@ export default function WorkspacePage() {
                                         onKeyDown={(e) => e.key === 'Enter' && handleLinkRepo()}
                                         placeholder="https://github.com/user/repo"
                                         autoFocus
+                                        disabled={!canEdit}
                                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                     />
                                 </div>
@@ -129,7 +184,7 @@ export default function WorkspacePage() {
                                     <p className="text-xs text-destructive">{repoError}</p>
                                 )}
                                 <div className="flex items-center gap-2">
-                                    <Button size="sm" onClick={handleLinkRepo}>
+                                    <Button size="sm" onClick={handleLinkRepo} disabled={!canEdit}>
                                         <Link2 className="mr-1 h-3.5 w-3.5" /> Link
                                     </Button>
                                     <Button
@@ -149,15 +204,17 @@ export default function WorkspacePage() {
                             <>
                                 <div className="flex items-center gap-2 text-muted-foreground">
                                     <Github className="h-5 w-5" />
-                                    <span className="font-semibold">Not linked yet</span>
+                                    <span className="font-semibold">{canEdit ? 'Not linked yet' : 'Linking locked'}</span>
                                 </div>
-                                <Button
-                                    variant="link"
-                                    className="px-0 h-auto mt-2 text-primary"
-                                    onClick={() => setShowLinkForm(true)}
-                                >
-                                    Link GitHub repo &rarr;
-                                </Button>
+                                {canEdit && (
+                                    <Button
+                                        variant="link"
+                                        className="px-0 h-auto mt-2 text-primary"
+                                        onClick={() => setShowLinkForm(true)}
+                                    >
+                                        Link GitHub repo &rarr;
+                                    </Button>
+                                )}
                             </>
                         )}
                     </CardContent>
@@ -165,24 +222,38 @@ export default function WorkspacePage() {
 
                 <Card>
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-lg">Submission Deadline</CardTitle>
+                        <CardTitle className="text-lg">Feature Gating</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div className="flex items-center gap-2 text-red-500">
-                            <Clock className="h-5 w-5" />
-                            <span className="font-semibold">5 days remaining</span>
+                    <CardContent className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Team Edits:</span>
+                            {canEdit ? (
+                                <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20">Open</Badge>
+                            ) : (
+                                <Badge variant="secondary" className="bg-red-500/10 text-red-600 border-red-500/20">Locked</Badge>
+                            )}
                         </div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            Make sure to submit before the deadline.
-                        </p>
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Submissions:</span>
+                            {canSubmit ? (
+                                <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
+                            ) : (
+                                <Badge variant="secondary" className="bg-red-500/10 text-red-600 border-red-500/20">Closed</Badge>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
             </div>
 
-            <Card>
+            <Card className={!canEdit ? 'opacity-80' : ''}>
                 <CardHeader>
-                    <CardTitle>Project Details</CardTitle>
-                    <CardDescription>Fill in your project information for the judges.</CardDescription>
+                    <CardTitle className="flex items-center gap-2">
+                        Project Details
+                        {!canEdit && <Lock className="h-4 w-4 text-muted-foreground" />}
+                    </CardTitle>
+                    <CardDescription>
+                        {canEdit ? 'Fill in your project information for the judges.' : 'Project details are locked for editing in this phase.'}
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2">
@@ -190,23 +261,17 @@ export default function WorkspacePage() {
                         <input
                             type="text"
                             placeholder="Enter your project name"
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            disabled={!canEdit}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Description</label>
                         <textarea
-                            placeholder="Describe your project, the problem it solves, and the technologies used..."
+                            placeholder="Describe your project..."
                             rows={4}
-                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Demo Link</label>
-                        <input
-                            type="url"
-                            placeholder="https://your-demo-link.com"
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            disabled={!canEdit}
+                            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                     </div>
                 </CardContent>
@@ -223,29 +288,12 @@ export default function WorkspacePage() {
                         <span className="text-sm">Team formed and registered</span>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                        <Clock className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Project name and description added</span>
+                        {linkedRepo ? <CheckCircle2 className="h-5 w-5 text-green-500" /> : <Clock className="h-5 w-5 text-muted-foreground" />}
+                        <span className={`text-sm ${!linkedRepo ? 'text-muted-foreground' : ''}`}>GitHub repository linked</span>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                        {linkedRepo ? (
-                            <>
-                                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                <span className="text-sm">GitHub repository linked</span>
-                            </>
-                        ) : (
-                            <>
-                                <Clock className="h-5 w-5 text-muted-foreground" />
-                                <span className="text-sm text-muted-foreground">GitHub repository linked</span>
-                            </>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                        <Clock className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Demo link provided</span>
-                    </div>
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-                        <Clock className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Final submission uploaded</span>
+                        {canSubmit ? <CheckCircle2 className="h-5 w-5 text-green-500" /> : <Lock className="h-5 w-5 text-muted-foreground" />}
+                        <span className={`text-sm ${!canSubmit ? 'text-muted-foreground' : ''}`}>Submission window active</span>
                     </div>
                 </CardContent>
             </Card>

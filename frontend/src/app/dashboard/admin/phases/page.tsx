@@ -11,10 +11,8 @@
  *  - Redirects non-admins to /dashboard
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { setBApi } from '@/lib/api/set-b';
 import { useAuth } from '@/components/AuthProvider';
 import { PhaseStepper, type Phase } from '@/components/PhaseStepper';
@@ -154,21 +152,29 @@ export default function AdminPhasesPage() {
         }
     }, [authLoading, profile, router]);
 
-    // Real-time phases
-    useEffect(() => {
-        const phasesQ = query(collection(db, 'phases'), orderBy('order'));
-        const unsub = onSnapshot(phasesQ, (snap) => {
-            const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Phase));
+    // Fetch phases from backend API (bypasses Firestore security rules)
+    const fetchPhases = useCallback(async () => {
+        try {
+            const data = await setBApi.listPhases();
             setPhases(data);
             setCurrentPhaseId(data.find((p) => p.isActive)?.id ?? null);
-        });
-        return () => unsub();
+        } catch (err) {
+            console.error('Failed to fetch phases:', err);
+        }
     }, []);
+
+    useEffect(() => {
+        fetchPhases();
+        // Poll every 5 seconds for near-real-time updates
+        const interval = setInterval(fetchPhases, 5000);
+        return () => clearInterval(interval);
+    }, [fetchPhases]);
 
     const handleSetActive = async (phaseId: string) => {
         setSettingActive(phaseId);
         try {
             await setBApi.setActivePhase(phaseId);
+            await fetchPhases();
             toast.success('Phase activated successfully!');
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -185,6 +191,7 @@ export default function AdminPhasesPage() {
             const currentFlags = phase?.featureFlags ?? { allowEdits: false, allowSubmission: false, allowJudging: false };
             const updatedFlags = { ...currentFlags, [flag]: value };
             await setBApi.updateFeatureFlags(phaseId, updatedFlags);
+            await fetchPhases();
             toast.success('Feature flag updated!');
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : 'Unknown error';
