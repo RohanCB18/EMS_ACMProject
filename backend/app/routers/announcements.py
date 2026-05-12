@@ -25,9 +25,13 @@ VALID_TRACKS = {"all", "AI", "Web", "Blockchain", "Open Innovation"}
 
 def verify_admin_token(authorization: Optional[str] = Header(None)) -> str:
     """Bearer token gate — any valid Bearer token is accepted."""
+    print(f"[Announcements] verify_admin_token() called with authorization header: {bool(authorization)}")
     if not authorization or not authorization.startswith("Bearer "):
+        print("[Announcements] Missing or invalid Authorization header")
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header.")
-    return authorization.split("Bearer ")[1]
+    token = authorization.split("Bearer ")[1]
+    print(f"[Announcements] Token verified: {token[:20]}...")
+    return token
 
 
 def announcement_to_dict(doc) -> dict:
@@ -40,13 +44,16 @@ def announcement_to_dict(doc) -> dict:
 
 
 def load_all_announcements() -> list[dict]:
+    print("[Announcements] load_all_announcements() called - fetching from Firestore")
     db = get_db()
     docs = (
         db.collection("announcements")
         .order_by("timestamp", direction="DESCENDING")
         .stream()
     )
-    return [announcement_to_dict(d) for d in docs]
+    results = [announcement_to_dict(d) for d in docs]
+    print(f"[Announcements] Loaded {len(results)} announcements from Firestore: {results}")
+    return results
 
 
 # ──────────────────────────────────────────────
@@ -71,21 +78,28 @@ def get_announcements(
     Return all announcements ordered newest-first.
     If `track` is provided, returns announcements targeting 'all' OR the given track.
     """
+    print(f"[Announcements] Received GET request with track filter: {track}")
     try:
         cache = get_kafka_cache()
         results = cache.get("announcements:all", load_all_announcements, ttl_secs=20)
+        print(f"[Announcements] Retrieved {len(results)} announcements from cache/db")
 
         if track:
             results = [
                 a for a in results
                 if a.get("targetTrack") in ("all", track)
             ]
+            print(f"[Announcements] Filtered to {len(results)} announcements for track: {track}")
 
         return results
 
     except FileNotFoundError as e:
+        print(f"[Announcements] FileNotFoundError: {str(e)}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        print(f"[Announcements] Exception during GET: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch announcements: {str(e)}")
 
 
@@ -95,6 +109,8 @@ def create_announcement(
     _token: str = Depends(verify_admin_token),
 ):
     """Admin only. Create a new announcement for all or a specific track."""
+    print(f"[Announcements] Received create request: {payload}")
+    
     if payload.targetTrack not in VALID_TRACKS:
         raise HTTPException(
             status_code=400,
@@ -104,19 +120,31 @@ def create_announcement(
         db = get_db()
         from google.cloud.firestore_v1 import SERVER_TIMESTAMP
         doc_ref = db.collection("announcements").document()
-        doc_ref.set({
+        print(f"[Announcements] Saving to Firestore collection 'announcements' with doc_id: {doc_ref.id}")
+        
+        announcement_data = {
             "title": payload.title,
             "body": payload.body,
             "targetTrack": payload.targetTrack,
             "timestamp": SERVER_TIMESTAMP,
-        })
+        }
+        doc_ref.set(announcement_data)
+        print(f"[Announcements] Successfully saved announcement to Firestore")
+        
         created = doc_ref.get()
+        result = announcement_to_dict(created)
+        print(f"[Announcements] Returned announcement: {result}")
+        
         get_kafka_cache().invalidate("announcements:all")
-        return announcement_to_dict(created)
+        return result
 
     except FileNotFoundError as e:
+        print(f"[Announcements] FileNotFoundError: {str(e)}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        print(f"[Announcements] Exception during create: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to create announcement: {str(e)}")
 
 
@@ -126,17 +154,29 @@ def delete_announcement(
     _token: str = Depends(verify_admin_token),
 ):
     """Admin only. Delete an announcement by its Firestore document ID."""
+    print(f"[Announcements] Received DELETE request for announcement_id: {announcement_id}")
     try:
         db = get_db()
         ref = db.collection("announcements").document(announcement_id)
-        if not ref.get().exists:
+        doc = ref.get()
+        
+        if not doc.exists:
+            print(f"[Announcements] Announcement not found: {announcement_id}")
             raise HTTPException(status_code=404, detail="Announcement not found.")
+        
+        print(f"[Announcements] Deleting announcement: {announcement_id}")
         ref.delete()
+        print(f"[Announcements] Successfully deleted announcement: {announcement_id}")
+        
         get_kafka_cache().invalidate("announcements:all")
         return {"message": f"Announcement '{announcement_id}' deleted successfully."}
     except HTTPException:
         raise
     except FileNotFoundError as e:
+        print(f"[Announcements] FileNotFoundError: {str(e)}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        print(f"[Announcements] Exception during DELETE: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to delete announcement: {str(e)}")

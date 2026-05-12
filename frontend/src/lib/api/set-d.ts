@@ -237,11 +237,11 @@ export const setDApi = {
         }),
 
     // ── Announcements (centralized) ──────────────────────────────
-    listAnnouncements: () =>
-        fetchApi<Announcement[]>('/api/announcements'),
+    listAnnouncements: (track?: string) =>
+        fetchApi<Announcement[]>(`/api/announcements/${track ? `?track=${encodeURIComponent(track)}` : ''}`),
 
     createAnnouncement: (ann: Partial<Announcement>) =>
-        fetchApi<Announcement>('/api/announcements', {
+        fetchApi<Announcement>('/api/announcements/', {
             method: 'POST',
             body: JSON.stringify(ann),
         }),
