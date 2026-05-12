@@ -14,7 +14,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { setBApi, Announcement } from '@/lib/api/set-b';
+import { setDApi, Announcement } from '@/lib/api/set-d';
 import { useAuth } from '@/components/AuthProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,7 +87,7 @@ function CreateAnnouncementDialog({
         }
         setLoading(true);
         try {
-            await setBApi.createAnnouncement({
+            await setDApi.createAnnouncement({
                 title: title.trim(),
                 body: body.trim(),
                 targetTrack: track
@@ -266,7 +266,7 @@ export default function AdminAnnouncementsPage() {
     const handleDelete = async (id: string) => {
         setDeleting(id);
         try {
-            await setBApi.deleteAnnouncement(id);
+            await setDApi.deleteAnnouncement(id);
             toast.success('Announcement deleted.');
         } catch (e: any) {
             toast.error(`Error: ${e.message}`);
