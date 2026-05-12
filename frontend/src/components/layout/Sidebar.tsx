@@ -20,7 +20,7 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
         switch (role) {
             case 'admin':
                 return [
-                    { name: 'Overview', icon: Home, href: '/dashboard/admin/overview' },
+                    { name: 'Users & RBAC', icon: ShieldCheck, href: '/dashboard/admin/roles' },
                     { name: 'Form Builder', icon: FileText, href: '/dashboard/admin/form-builder' },
                     { name: 'Phases', icon: Layers, href: '/dashboard/admin/phases' },
                     { name: 'Announcements', icon: Megaphone, href: '/dashboard/announcements' },
@@ -30,8 +30,6 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
                     { name: 'Helpdesk', icon: LifeBuoy, href: '/dashboard/admin/helpdesk' },
                     { name: 'Mentors', icon: GraduationCap, href: '/dashboard/admin/mentors' },
                     { name: 'Sponsors & Tracks', icon: Building2, href: '/dashboard/admin/sponsors' },
-                    { name: 'Analytics', icon: BarChart3, href: '/dashboard/admin/analytics' },
-                    { name: 'Users & RBAC', icon: ShieldCheck, href: '/dashboard/admin/roles' },
                     { name: 'Profile', icon: User, href: '/dashboard/profile' },
                 ];
             case 'judge':
@@ -56,6 +54,7 @@ export function Sidebar({ className, role = 'participant' }: SidebarProps) {
                     { name: 'Workspace', icon: FileText, href: '/dashboard/participant/workspace' },
                     { name: 'My Team', icon: Users, href: '/dashboard/participant/team' },
                     { name: 'Announcements', icon: Megaphone, href: '/dashboard/announcements' },
+                    { name: 'Helpdesk', icon: LifeBuoy, href: '/dashboard/participant/helpdesk' },
                     { name: 'Profile', icon: User, href: '/dashboard/profile' },
                     { name: 'Settings', icon: Settings, href: '/dashboard/participant/settings' },
                 ];

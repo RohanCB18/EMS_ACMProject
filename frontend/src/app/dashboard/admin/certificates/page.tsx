@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileBadge, Send, CopyCheck, FileKey2, FileDown, Layers, History, MailCheck, ShieldAlert, Plus, Trash2, X, QrCode } from 'lucide-react';
+import { FileBadge, Send, FileDown, Layers, MailCheck } from 'lucide-react';
 import {
     Select,
     SelectContent,
@@ -58,11 +58,7 @@ export default function AutomationDashboard() {
     const [previewTrack, setPreviewTrack] = useState('General');
     const [previewProject, setPreviewProject] = useState('');
 
-    // QR Badge Blast state
-    const [qrEmails, setQrEmails] = useState('');
-    const [qrExpiry, setQrExpiry] = useState(24);
-    const [isBlasting, setIsBlasting] = useState(false);
-    const [qrIncludeCert, setQrIncludeCert] = useState(true);
+
 
     // ── Fetch Users from Firebase ────────────────────────────────────────────
 
@@ -266,38 +262,7 @@ export default function AutomationDashboard() {
         }
     };
 
-    // ── QR Badge Blast ───────────────────────────────────────────────────────
 
-    const handleQrBlast = async () => {
-        const emails = qrEmails.split(/[\n,]/).map(e => e.trim()).filter(Boolean);
-        if (emails.length === 0) {
-            toast.error("Enter at least one email");
-            return;
-        }
-        setIsBlasting(true);
-        try {
-            const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${API_BASE}/api/checkin/attendance/qr-blast`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    usns: emails,
-                    event_id: 'hackodyssey2026',
-                    expiry_hours: qrExpiry,
-                    include_certificate: qrIncludeCert,
-                }),
-            });
-            if (!response.ok) throw new Error('Blast failed');
-            const data = await response.json();
-            toast.success(data.message || `QR badges sent to ${emails.length} email(s)!`);
-            setQrEmails('');
-        } catch (error) {
-            toast.error('Failed to send QR badges');
-            console.error(error);
-        } finally {
-            setIsBlasting(false);
-        }
-    };
 
     // ── Render ───────────────────────────────────────────────────────────────
 
@@ -313,10 +278,9 @@ export default function AutomationDashboard() {
 
 
             <Tabs defaultValue="certificates" onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-3">
+                <TabsList className="grid w-full md:w-auto md:inline-grid grid-cols-2">
                     <TabsTrigger value="certificates">Certificate Engine</TabsTrigger>
                     <TabsTrigger value="communications">Email Blaster</TabsTrigger>
-                    <TabsTrigger value="qr-blast">QR Badge Blast</TabsTrigger>
                 </TabsList>
 
                 {/* ── Certificate Engine Tab ─────────────────────────────── */}
@@ -510,46 +474,7 @@ export default function AutomationDashboard() {
                     </Card>
                 </TabsContent>
 
-                {/* ── QR Badge Blast Tab ────────────────────────────────── */}
-                <TabsContent value="qr-blast" className="space-y-4">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2"><QrCode className="h-5 w-5" /> QR Badge Blast</CardTitle>
-                            <CardDescription>Enter email addresses to send personalized QR attendance badges. When scanned, the corresponding email will receive their certificate.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Email Addresses (one per line or comma-separated)</Label>
-                                <Textarea
-                                    placeholder={"alice@example.com\nbob@example.com\ncharlie@example.com"}
-                                    className="min-h-[160px] font-mono text-sm"
-                                    value={qrEmails}
-                                    onChange={e => setQrEmails(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">{qrEmails.split(/[\n,]/).filter(e => e.trim()).length} email(s) entered</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>QR Expiry (hours)</Label>
-                                    <Input type="number" min={1} max={168} value={qrExpiry} onChange={e => setQrExpiry(Number(e.target.value))} />
-                                </div>
-                            </div>
-                            <div className="flex items-center justify-between rounded-lg border p-4">
-                                <div className="space-y-0.5">
-                                    <Label className="text-base">Include Certificate on Scan</Label>
-                                    <p className="text-sm text-muted-foreground">When QR is scanned at check-in, automatically email the certificate to that address.</p>
-                                </div>
-                                <Switch checked={qrIncludeCert} onCheckedChange={setQrIncludeCert} />
-                            </div>
-                        </CardContent>
-                        <CardFooter className="border-t pt-4">
-                            <Button className="w-full" onClick={handleQrBlast} disabled={isBlasting}>
-                                <Send className="mr-2 h-4 w-4" />
-                                {isBlasting ? 'Sending...' : `Blast QR Badges to ${qrEmails.split(/[\n,]/).filter(e => e.trim()).length} Email(s)`}
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                </TabsContent>
+
             </Tabs>
         </div>
     );

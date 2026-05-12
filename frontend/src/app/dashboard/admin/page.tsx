@@ -7,13 +7,13 @@ export default function DashboardAdminPage() {
     const router = useRouter();
 
     useEffect(() => {
-        router.replace('/dashboard/admin/overview');
+        router.replace('/dashboard/admin/roles');
     }, [router]);
 
     return (
         <div className="min-h-screen flex items-center justify-center p-6 text-center">
             <div>
-                <p className="text-lg font-medium">Redirecting to the admin overview...</p>
+                <p className="text-lg font-medium">Redirecting...</p>
             </div>
         </div>
     );

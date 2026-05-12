@@ -25,16 +25,9 @@ async def create_ticket(
 async def list_tickets(
     current_user: dict = Depends(get_current_user)
 ):
-    """List tickets (participants see their own, admins/volunteers see all)."""
+    """List all tickets. Frontend applies role-based filtering."""
     db = get_firestore_client()
-    role = current_user.get("role")
-    
-    if role in [UserRole.SUPER_ADMIN, UserRole.ORGANIZER, UserRole.VOLUNTEER]:
-        query = db.collection("tickets")
-    else:
-        query = db.collection("tickets").where("raised_by_uid", "==", current_user["uid"])
-        
-    docs = query.stream()
+    docs = db.collection("tickets").stream()
     return [doc.to_dict() for doc in docs]
 
 @router.patch("/{ticket_id}")
