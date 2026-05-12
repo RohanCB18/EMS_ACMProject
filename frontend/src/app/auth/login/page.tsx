@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +11,9 @@ import { Code, Loader2 } from 'lucide-react';
 import { signInWithEmail, signInWithGoogle, signInWithGitHub, verifyTokenWithBackend } from '@/lib/firebase';
 import { fetchApi } from '@/lib/api';
 
+const roleOptions = ['admin', 'participant', 'judge', 'volunteer'] as const;
+export type AuthRole = (typeof roleOptions)[number];
+
 export default function LoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState('');
@@ -18,6 +21,29 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [oauthLoading, setOauthLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [preferredRole, setPreferredRole] = useState<AuthRole>('participant');
+
+    useEffect(() => {
+        const searchParams = new URLSearchParams(window.location.search);
+        const roleParam = searchParams.get('role')?.toLowerCase();
+        if (roleParam && roleOptions.includes(roleParam as AuthRole)) {
+            setPreferredRole(roleParam as AuthRole);
+        }
+    }, []);
+
+    const getRedirectTarget = (role?: string) => {
+        if (!role) return '/auth/register';
+        if (role === 'admin' || role === 'organizer' || role === 'super_admin') {
+            return '/dashboard/admin/overview';
+        }
+        if (role === 'judge') {
+            return '/dashboard/judge';
+        }
+        if (role === 'volunteer') {
+            return '/dashboard/volunteer';
+        }
+        return '/dashboard/participant';
+    };
 
     const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -26,17 +52,14 @@ export default function LoginPage() {
 
         try {
             const user = await signInWithEmail(email, password);
-            // Verify with backend and get profile
             const result = await verifyTokenWithBackend(user);
-
-            // Redirect based on role
-            if (result.profile?.role === 'admin') {
-                router.push('/dashboard/admin/overview');
-            } else {
-                router.push('/dashboard/participant/overview');
+            if (!result.profile) {
+                router.push(`/auth/register?role=${preferredRole}`);
+                return;
             }
+            router.push(getRedirectTarget(result.profile.role?.toLowerCase()));
         } catch (err: unknown) {
-            const error = err as { code?: string; message?: string };
+            const error = err as { code?: string; message?: string; status?: number; data?: any };
             if (error.code === 'auth/user-not-found') {
                 setError('No account found with this email. Sign up instead?');
             } else if (error.code === 'auth/wrong-password') {
@@ -62,31 +85,32 @@ export default function LoginPage() {
                 ? await signInWithGoogle()
                 : await signInWithGitHub();
 
-            // Verify with backend — if profile doesn't exist, create it
-            const result = await verifyTokenWithBackend(user);
-
+            let result = await verifyTokenWithBackend(user);
             if (!result.profile) {
-                // First-time OAuth login — create profile via backend
-                await fetchApi('/api/auth/create-profile', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        uid: user.uid,
-                        email: user.email,
-                        display_name: user.displayName || 'User',
-                        role: 'participant',
-                    }),
-                });
+                try {
+                    await fetchApi('/api/auth/create-profile', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            uid: user.uid,
+                            email: user.email,
+                            display_name: user.displayName || 'User',
+                            role: preferredRole,
+                        }),
+                    });
+                } catch (createErr: any) {
+                    if (createErr?.status !== 409) {
+                        throw createErr;
+                    }
+                    const refreshed = await verifyTokenWithBackend(user);
+                    result = refreshed;
+                }
             }
 
-            if (result.profile?.role === 'admin') {
-                router.push('/dashboard/admin/overview');
-            } else {
-                router.push('/dashboard/participant/overview');
-            }
+            router.push(getRedirectTarget(result.profile?.role?.toLowerCase()));
         } catch (err: unknown) {
             const error = err as { code?: string; message?: string };
             if (error.code === 'auth/popup-closed-by-user') {
-                // User closed the popup — don't show error
+                // Silent — user closed popup
             } else if (error.code === 'auth/account-exists-with-different-credential') {
                 setError('An account with this email already exists using a different sign-in method.');
             } else {
@@ -122,6 +146,11 @@ export default function LoginPage() {
                         <p className="text-sm text-muted-foreground">
                             Enter your email to sign in to your account
                         </p>
+                        {preferredRole !== 'participant' && (
+                            <p className="text-sm text-muted-foreground">
+                                Logging in as <span className="font-semibold text-foreground">{preferredRole}</span>. Your role will determine which dashboard you are redirected to.
+                            </p>
+                        )}
                     </div>
 
                     {error && (

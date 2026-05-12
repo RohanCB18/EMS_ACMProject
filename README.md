@@ -1,18 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Event Management System (EMS) — HackOdyssey
 
-## Getting Started
+A centralized platform to manage hackathon operations, registrations, judging, and finance.
 
-First, run the development server:
+## 🚀 Quick Start
+
+### 1. Backend Setup (FastAPI)
+The backend handles authentication, Firestore integration, and core business logic.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Navigate to the backend directory
+cd backend
+
+# Create and activate a virtual environment
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the server (on port 8000)
+uvicorn app.main:app --reload --port 8000
 ```
+> [!IMPORTANT]
+> Ensure you have the `serviceAccountKey.json` file in the `backend/` root directory for Firebase access.
+
+### 2. Frontend Setup (Next.js)
+The frontend provides the participant and admin dashboards.
+
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to view the application.
+
+## 🛠 Project Structure
+- **/frontend**: Next.js application (App Router)
+- **/backend/app**: Unified FastAPI application with role-based routing
+- **/backend/aditya, /backend/rohan, etc**: Individual developer workspace folders (deprecated in favor of `/app`)
+
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 

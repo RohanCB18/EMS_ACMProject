@@ -1,0 +1,5 @@
+﻿56216a1 | 20an | 04-Apr 10:56 PM | role based registration + unified frontend
+1c74565 | 20an | 01-Apr 07:46 PM | docs: add comprehensive API schema
+61acca6 | 20an | 20-Mar 04:26 PM | feat: add volunteer reimbursement portal, fix OAuth login, improve auth flow
+66c98fe | 20an | 20-Mar 12:07 PM | Integrated Firebase for Certificates & Email Blaster with dynamic fetching
+63da429 | 20an | 20-Mar 02:36 AM | Implement intelligent prioritizing auto-allocation and fix shortlist save bug

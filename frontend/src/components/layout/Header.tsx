@@ -1,5 +1,9 @@
+'use client';
+
 import React from 'react';
 import { Bell, Menu, Search, User } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -14,7 +18,21 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Sidebar } from './Sidebar';
 
-export function Header() {
+interface HeaderProps {
+    role?: 'admin' | 'participant' | 'judge' | 'volunteer';
+}
+
+export function Header({ role = 'participant' }: HeaderProps) {
+    const router = useRouter();
+    const { profile, signOut } = useAuth();
+    const displayName = profile?.display_name || 'Guest User';
+    const initials = displayName
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0].toUpperCase())
+        .slice(0, 2)
+        .join('') || 'GU';
+
     return (
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
             <Sheet>
@@ -25,7 +43,7 @@ export function Header() {
                     </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="sm:max-w-xs p-0">
-                    <Sidebar role="participant" className="block w-full border-r-0" />
+                    <Sidebar role={role} className="block w-full border-r-0" />
                 </SheetContent>
             </Sheet>
 
@@ -58,18 +76,28 @@ export function Header() {
                         <Button variant="ghost" size="icon" className="rounded-full">
                             <Avatar className="h-8 w-8">
                                 <AvatarImage src="" alt="User" />
-                                <AvatarFallback>JD</AvatarFallback>
+                                <AvatarFallback>{initials}</AvatarFallback>
                             </Avatar>
                             <span className="sr-only">Toggle user menu</span>
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                        <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
+                        <div className="px-3 py-1 text-xs text-muted-foreground">{profile?.role ?? 'No role selected'}</div>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>Profile</DropdownMenuItem>
-                        <DropdownMenuItem>Settings</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => router.push('/dashboard/profile')}>
+                            Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => router.push('/dashboard/announcements')}>
+                            Announcements
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>Logout</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={async () => {
+                            await signOut();
+                            router.push('/auth/login');
+                        }}>
+                            Logout
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>

@@ -1,10 +1,12 @@
+'use client';
+
 import React from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
-    role?: 'admin' | 'participant' | 'judge' | 'mentor';
+    role?: 'admin' | 'participant' | 'judge' | 'volunteer';
 }
 
 export function DashboardLayout({ children, role = 'participant' }: DashboardLayoutProps) {
@@ -13,7 +15,7 @@ export function DashboardLayout({ children, role = 'participant' }: DashboardLay
             <div className="flex flex-1">
                 <Sidebar role={role} />
                 <div className="flex flex-1 flex-col sm:gap-4 sm:py-4 sm:pl-4 w-full">
-                    <Header />
+                    <Header role={role} />
                     <main className="flex-1 p-4 md:p-6 lg:p-8">
                         {children}
                     </main>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,9 @@ import {
     ClipboardList, CheckCircle2, Clock, Star, Send, Eye,
     FileText, MessageSquare, Lock, Trophy, BarChart3,
 } from 'lucide-react';
+
+import { getAuth } from 'firebase/auth';
+import { judgingApi } from '@/lib/api/judging';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -56,18 +60,37 @@ interface PastEvaluation {
 // ═══════════════════════════════════════════════════════════
 
 export default function JudgeDashboard() {
-    const [activeTab, setActiveTab] = useState('assignments');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const tabParam = searchParams.get('tab');
+    
+    const [activeTab, setActiveTab] = useState(tabParam || 'assignments');
+
+    // Sync state with URL param if it changes externally
+    useEffect(() => {
+        if (tabParam && tabParam !== activeTab) {
+            setActiveTab(tabParam);
+        }
+    }, [tabParam, activeTab]);
+
+    const handleTabChange = (val: string) => {
+        setActiveTab(val);
+        router.push(`/dashboard/judge?tab=${val}`, { scroll: false });
+    };
 
     // ─── State ───────────────────────────────────────────────
     const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [pastEvaluations, setPastEvaluations] = useState<PastEvaluation[]>([]);
 
-    const rubric: RubricCriteria[] = [
+    const EVENT_ID = 'default_event';
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [rubric, setRubric] = useState<RubricCriteria[]>([
         { id: 'innovation', name: 'Innovation', weight: 25, max_score: 10, description: 'Novelty and creativity of the solution' },
         { id: 'execution', name: 'Execution', weight: 30, max_score: 10, description: 'Quality of implementation and code' },
         { id: 'presentation', name: 'Presentation', weight: 20, max_score: 10, description: 'Clarity of demo and pitch' },
         { id: 'impact', name: 'Impact', weight: 25, max_score: 10, description: 'Real-world applicability and potential' },
-    ];
+    ]);
 
     // Scoring form state
     const [scoringProject, setScoringProject] = useState<Assignment | null>(null);
@@ -75,23 +98,78 @@ export default function JudgeDashboard() {
     const [overallComment, setOverallComment] = useState('');
     const [privateNotes, setPrivateNotes] = useState('');
 
-    // ─── Demo Data ───────────────────────────────────────────
+    // ─── Data Fetchers (Real API) ────────────────────────────
 
-    const loadDemoData = useCallback(() => {
-        setAssignments([
-            { allocation_id: 'a1', project_id: 'p1', project_title: 'AI-Powered Health Monitor', track: 'AI/ML', team_name: 'Team Alpha', status: 'assigned', round: 'round_1' },
-            { allocation_id: 'a2', project_id: 'p2', project_title: 'Smart Campus Navigator', track: 'IoT', team_name: 'Nav Squad', status: 'assigned', round: 'round_1' },
-            { allocation_id: 'a3', project_id: 'p5', project_title: 'Eco Drive Optimizer', track: 'Mobile', team_name: 'Green Wheels', status: 'assigned', round: 'round_1' },
-        ]);
-        setPastEvaluations([
-            { score_id: 's1', project_id: 'p3', project_title: 'Secure Chat Protocol', weighted_total: 78.5, overall_comment: 'Strong encryption implementation but UI needs work.', submitted_at: '2026-03-03T14:30:00Z', round: 'round_1' },
-            { score_id: 's2', project_id: 'p4', project_title: 'DeFi Portfolio Tracker', weighted_total: 85.2, overall_comment: 'Excellent use of smart contracts. Very innovative approach.', submitted_at: '2026-03-03T16:00:00Z', round: 'round_1' },
-        ]);
+    const getJudgeId = useCallback(async (): Promise<string | null> => {
+        try {
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (!user) return null;
+            // Try to find the judge doc by email
+            const judges = await judgingApi.listJudges();
+            const match = judges.find(j => j.email === user.email);
+            return match?.judge_id || user.uid;
+        } catch {
+            return null;
+        }
     }, []);
 
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const judgeId = await getJudgeId();
+            if (!judgeId) {
+                setLoading(false);
+                return;
+            }
+
+            // Fetch assignments for this judge
+            const allocs = await judgingApi.getJudgeAllocations(judgeId);
+            const pending = allocs
+                .filter(a => a.status === 'assigned')
+                .map(a => ({
+                    allocation_id: a.allocation_id,
+                    project_id: a.project_id,
+                    project_title: a.project_title,
+                    track: a.track || '',
+                    team_name: a.judge_name, // Will be enriched later
+                    status: a.status as 'assigned' | 'reviewed',
+                    round: a.round,
+                }));
+            setAssignments(pending);
+
+            // Fetch past evaluations
+            const evalScores = await judgingApi.getJudgeScores(judgeId);
+            const evals = evalScores.map(s => ({
+                score_id: s.score_id,
+                project_id: s.project_id,
+                project_title: s.project_title,
+                weighted_total: s.weighted_total,
+                overall_comment: s.overall_comment,
+                submitted_at: s.submitted_at || '',
+                round: s.round,
+            }));
+            setPastEvaluations(evals);
+
+            // Try to fetch rubric
+            try {
+                const rubrics = await judgingApi.getRubrics(EVENT_ID);
+                if (rubrics && rubrics.length > 0) {
+                    setRubric(rubrics[0].criteria);
+                }
+            } catch (error) {
+                console.warn('Using default rubric as fetch failed or no rubric set.');
+            }
+        } catch (err: any) {
+            console.error('Failed to load judge data:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [getJudgeId, EVENT_ID]);
+
     useEffect(() => {
-        loadDemoData();
-    }, [loadDemoData]);
+        fetchData();
+    }, [fetchData]);
 
     // ─── Scoring Logic ───────────────────────────────────────
 
@@ -112,7 +190,7 @@ export default function JudgeDashboard() {
         return Math.round(total * 100) / 100;
     }, [scores, rubric]);
 
-    const handleSubmitScore = () => {
+    const handleSubmitScore = async () => {
         const unscored = rubric.filter(c => scores[c.id] === undefined || scores[c.id] === 0);
         if (unscored.length > 0) {
             toast.error(`Please score all criteria. Missing: ${unscored.map(c => c.name).join(', ')}`);
@@ -121,20 +199,39 @@ export default function JudgeDashboard() {
 
         if (!scoringProject) return;
 
-        // Move from assignments to past evaluations
-        setAssignments(prev => prev.filter(a => a.allocation_id !== scoringProject.allocation_id));
-        setPastEvaluations(prev => [{
-            score_id: `s${Date.now()}`,
-            project_id: scoringProject.project_id,
-            project_title: scoringProject.project_title,
-            weighted_total: weightedTotal,
-            overall_comment: overallComment,
-            submitted_at: new Date().toISOString(),
-            round: scoringProject.round,
-        }, ...prev]);
+        setSubmitting(true);
+        try {
+            await judgingApi.submitScore({
+                event_id: EVENT_ID,
+                project_id: scoringProject.project_id,
+                round: scoringProject.round,
+                criteria_scores: rubric.map(c => ({
+                    criteria_id: c.id,
+                    score: scores[c.id] || 0,
+                })),
+                overall_comment: overallComment || undefined,
+                private_notes: privateNotes || undefined,
+            });
 
-        setScoringProject(null);
-        toast.success(`Score submitted for "${scoringProject.project_title}" — ${weightedTotal}%`);
+            // Move from assignments to past evaluations
+            setAssignments(prev => prev.filter(a => a.allocation_id !== scoringProject.allocation_id));
+            setPastEvaluations(prev => [{
+                score_id: `s${Date.now()}`,
+                project_id: scoringProject.project_id,
+                project_title: scoringProject.project_title,
+                weighted_total: weightedTotal,
+                overall_comment: overallComment,
+                submitted_at: new Date().toISOString(),
+                round: scoringProject.round,
+            }, ...prev]);
+
+            setScoringProject(null);
+            toast.success(`Score submitted for "${scoringProject.project_title}" — ${weightedTotal}%`);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to submit score');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     // ─── Computed Stats ──────────────────────────────────────
@@ -197,7 +294,7 @@ export default function JudgeDashboard() {
             </div>
 
             {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="assignments" className="flex items-center gap-1.5"><ClipboardList className="h-4 w-4" /> My Assignments</TabsTrigger>
                     <TabsTrigger value="history" className="flex items-center gap-1.5"><BarChart3 className="h-4 w-4" /> History</TabsTrigger>

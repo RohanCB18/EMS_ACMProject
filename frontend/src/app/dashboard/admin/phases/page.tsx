@@ -14,7 +14,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db, API_URL } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { setBApi } from '@/lib/api/set-b';
 import { useAuth } from '@/components/AuthProvider';
 import { PhaseStepper, type Phase } from '@/components/PhaseStepper';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -164,22 +165,10 @@ export default function AdminPhasesPage() {
         return () => unsub();
     }, []);
 
-    const getAuthHeader = async (): Promise<Record<string, string>> => {
-        if (!user) return {};
-        const token = await user.getIdToken();
-        return { Authorization: `Bearer ${token}` };
-    };
-
     const handleSetActive = async (phaseId: string) => {
         setSettingActive(phaseId);
         try {
-            const headers = await getAuthHeader();
-            const res = await fetch(`${API_URL.replace('8002', '8004')}/phases/set-active`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...headers },
-                body: JSON.stringify({ phaseId }),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail ?? 'Failed');
+            await setBApi.setActivePhase(phaseId);
             toast.success('Phase activated successfully!');
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : 'Unknown error';
@@ -192,17 +181,10 @@ export default function AdminPhasesPage() {
     const handleFlagChange = async (phaseId: string, flag: string, value: boolean) => {
         setUpdatingFlags(phaseId);
         try {
-            const headers = await getAuthHeader();
             const phase = phases.find((p) => p.id === phaseId);
             const currentFlags = phase?.featureFlags ?? { allowEdits: false, allowSubmission: false, allowJudging: false };
             const updatedFlags = { ...currentFlags, [flag]: value };
-
-            const res = await fetch(`${API_URL.replace('8002', '8004')}/phases/flags`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', ...headers },
-                body: JSON.stringify({ phaseId, featureFlags: updatedFlags }),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail ?? 'Failed');
+            await setBApi.updateFeatureFlags(phaseId, updatedFlags);
             toast.success('Feature flag updated!');
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : 'Unknown error';
