@@ -18,14 +18,35 @@ import {
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-    ClipboardList, CheckCircle2, Clock, Star, Send, Eye,
+    ClipboardList, CheckCircle2, Clock, Star, Send,
     FileText, MessageSquare, Lock, Trophy, BarChart3,
+    Github, ExternalLink, Code2, BookOpen,
 } from 'lucide-react';
 
 import { getAuth } from 'firebase/auth';
 import { judgingApi } from '@/lib/api/judging';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 // ─── Types ────────────────────────────────────────────────
+
+interface ProjectSubmission {
+    // New participant workspace fields
+    projectName?: string;
+    description?: string;
+    // Legacy workspace fields (kept for compatibility)
+    projectTitle?: string;
+    abstract?: string;
+    // Shared fields
+    techStack: string[];
+    githubUrl: string;
+    demoUrl?: string;
+    isSubmitted?: boolean;
+    submittedBy?: string;
+    // Computed display fields (normalised by enrichment)
+    displayTitle?: string;
+    displayAbstract?: string;
+}
 
 interface Assignment {
     allocation_id: string;
@@ -35,6 +56,8 @@ interface Assignment {
     team_name: string;
     status: 'assigned' | 'reviewed';
     round: string;
+    // Enriched from Firestore submissions
+    submission?: ProjectSubmission | null;
 }
 
 interface RubricCriteria {
@@ -125,18 +148,43 @@ export default function JudgeDashboard() {
 
             // Fetch assignments for this judge
             const allocs = await judgingApi.getJudgeAllocations(judgeId);
-            const pending = allocs
+            const pendingBase = allocs
                 .filter(a => a.status === 'assigned')
                 .map(a => ({
                     allocation_id: a.allocation_id,
                     project_id: a.project_id,
                     project_title: a.project_title,
                     track: a.track || '',
-                    team_name: a.judge_name, // Will be enriched later
+                    team_name: a.judge_name,
                     status: a.status as 'assigned' | 'reviewed',
                     round: a.round,
                 }));
-            setAssignments(pending);
+
+            // Enrich each assignment with project submission details from Firestore
+            const enriched = await Promise.all(
+                pendingBase.map(async (a) => {
+                    try {
+                        const subSnap = await getDoc(doc(db, 'submissions', a.project_id));
+                        if (!subSnap.exists()) return { ...a, submission: null };
+
+                        const d = subSnap.data() as ProjectSubmission;
+
+                        // Only expose to judge if participant has actually submitted
+                        if (!d.isSubmitted) return { ...a, submission: null };
+
+                        // Normalise field names from both workspace versions
+                        const normalized: ProjectSubmission = {
+                            ...d,
+                            displayTitle: d.projectName || d.projectTitle || '',
+                            displayAbstract: d.description || d.abstract || '',
+                        };
+                        return { ...a, submission: normalized };
+                    } catch {
+                        return { ...a, submission: null };
+                    }
+                })
+            );
+            setAssignments(enriched);
 
             // Fetch past evaluations
             const evalScores = await judgingApi.getJudgeScores(judgeId);
@@ -313,12 +361,12 @@ export default function JudgeDashboard() {
                     ) : (
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                             {assignments.map(a => (
-                                <Card key={a.allocation_id} className="relative overflow-hidden hover:shadow-md transition-shadow">
+                                <Card key={a.allocation_id} className="relative overflow-hidden hover:shadow-md transition-shadow flex flex-col">
                                     <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400" />
                                     <CardHeader className="pb-2">
                                         <div className="flex justify-between items-start">
-                                            <CardTitle className="text-base">{a.project_title}</CardTitle>
-                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800">
+                                            <CardTitle className="text-base leading-tight">{a.project_title}</CardTitle>
+                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800 shrink-0 ml-2">
                                                 <Clock className="mr-1 h-3 w-3" /> Pending
                                             </Badge>
                                         </div>
@@ -326,8 +374,56 @@ export default function JudgeDashboard() {
                                             <span className="font-medium">{a.team_name}</span> • {a.track} • {a.round.replace('_', ' ')}
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent className="pt-2">
-                                        <Button className="w-full" onClick={() => openScoringForm(a)}>
+                                    <CardContent className="pt-0 flex flex-col gap-3 flex-1">
+                                        {/* Project details from submission */}
+                                        {a.submission ? (
+                                            <div className="space-y-2">
+                                                {a.submission.displayAbstract && (
+                                                    <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                                                        {a.submission.displayAbstract}
+                                                    </p>
+                                                )}
+                                                {a.submission.techStack?.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {a.submission.techStack.slice(0, 4).map(tag => (
+                                                            <span key={tag} className="text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 rounded-full px-2 py-0.5">
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                        {a.submission.techStack.length > 4 && (
+                                                            <span className="text-[10px] text-muted-foreground px-1 py-0.5">+{a.submission.techStack.length - 4} more</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <div className="flex gap-2 flex-wrap">
+                                                    {a.submission.githubUrl && (
+                                                        <a
+                                                            href={a.submission.githubUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <Github className="h-3 w-3" /> GitHub
+                                                        </a>
+                                                    )}
+                                                    {a.submission.demoUrl && (
+                                                        <a
+                                                            href={a.submission.demoUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <ExternalLink className="h-3 w-3" /> Demo
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground italic">No project details submitted yet.</p>
+                                        )}
+                                        <Button className="w-full mt-auto" onClick={() => openScoringForm(a)}>
                                             <Star className="mr-2 h-4 w-4" /> Evaluate Project
                                         </Button>
                                     </CardContent>
@@ -397,78 +493,151 @@ export default function JudgeDashboard() {
                             Evaluate: {scoringProject?.project_title}
                         </DialogTitle>
                         <DialogDescription>
-                            Score each criterion below. The weighted total is calculated automatically.
+                            Review project details below, then score each criterion.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-5 py-2">
-                        {/* Rubric Criteria Inputs */}
-                        {rubric.map(c => (
-                            <div key={c.id} className="space-y-2 p-4 rounded-lg border bg-muted/30">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <Label className="text-sm font-semibold">{c.name}</Label>
-                                        <span className="text-xs text-muted-foreground ml-2">({c.weight}% weight)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            type="number"
-                                            min={0}
-                                            max={c.max_score}
-                                            className="w-20 text-center font-mono font-bold"
-                                            placeholder="0"
-                                            value={scores[c.id] ?? ''}
-                                            onChange={e => {
-                                                const val = Math.min(c.max_score, Math.max(0, parseFloat(e.target.value) || 0));
-                                                setScores(prev => ({ ...prev, [c.id]: val }));
-                                            }}
-                                        />
-                                        <span className="text-sm text-muted-foreground">/ {c.max_score}</span>
-                                    </div>
+                        {/* ── Project Details Panel ── */}
+                        {scoringProject?.submission ? (
+                            <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+                                <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                                    <BookOpen className="h-4 w-4 text-primary" /> Project Details
+                                </h4>
+
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                    <span className="text-muted-foreground">Team</span>
+                                    <span className="font-medium">{scoringProject.team_name || '—'}</span>
+                                    <span className="text-muted-foreground">Track</span>
+                                    <span className="font-medium">{scoringProject.track || '—'}</span>
+                                    <span className="text-muted-foreground">Round</span>
+                                    <span className="font-medium capitalize">{scoringProject.round.replace('_', ' ')}</span>
                                 </div>
-                                {c.description && (
-                                    <p className="text-xs text-muted-foreground">{c.description}</p>
+
+                                {scoringProject.submission.displayAbstract && (
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Abstract</p>
+                                        <p className="text-sm leading-relaxed">{scoringProject.submission.displayAbstract}</p>
+                                    </div>
                                 )}
-                                {/* Visual score bar */}
-                                <div className="w-full bg-muted rounded-full h-2">
-                                    <div
-                                        className="h-2 rounded-full transition-all duration-300 bg-primary"
-                                        style={{ width: `${((scores[c.id] || 0) / c.max_score) * 100}%` }}
-                                    />
+
+                                {scoringProject.submission.techStack?.length > 0 && (
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                            <Code2 className="h-3 w-3" /> Tech Stack
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {scoringProject.submission.techStack.map(tag => (
+                                                <span key={tag} className="text-xs font-medium bg-primary/10 text-primary border border-primary/20 rounded-full px-2.5 py-0.5">
+                                                    {tag}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 pt-1">
+                                    {scoringProject.submission.githubUrl && (
+                                        <a
+                                            href={scoringProject.submission.githubUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-3 py-1.5 hover:bg-muted transition-colors"
+                                        >
+                                            <Github className="h-3.5 w-3.5" /> View on GitHub
+                                        </a>
+                                    )}
+                                    {scoringProject.submission.demoUrl && (
+                                        <a
+                                            href={scoringProject.submission.demoUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-3 py-1.5 hover:bg-muted transition-colors"
+                                        >
+                                            <ExternalLink className="h-3.5 w-3.5" /> View Demo
+                                        </a>
+                                    )}
                                 </div>
                             </div>
-                        ))}
+                        ) : (
+                            <div className="rounded-lg border bg-muted/40 p-4">
+                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                    <FileText className="h-4 w-4" />
+                                    Team has not submitted project details yet.
+                                </p>
+                            </div>
+                        )}
 
-                        {/* Weighted Total Display */}
-                        <div className="p-4 rounded-lg bg-primary/5 border-2 border-primary/20 text-center">
-                            <p className="text-sm text-muted-foreground">Weighted Total Score</p>
-                            <p className={`text-4xl font-bold ${weightedTotal >= 80 ? 'text-green-600 dark:text-green-400' :
-                                weightedTotal >= 60 ? 'text-amber-600 dark:text-amber-400' :
-                                    'text-red-600 dark:text-red-400'}`}>
-                                {weightedTotal}%
-                            </p>
-                        </div>
+                        <div className="border-t pt-4 space-y-4">
+                            <p className="text-sm font-semibold">Scoring Rubric</p>
+                            {/* Rubric Criteria Inputs */}
+                            {rubric.map(c => (
+                                <div key={c.id} className="space-y-2 p-4 rounded-lg border bg-muted/30">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <Label className="text-sm font-semibold">{c.name}</Label>
+                                            <span className="text-xs text-muted-foreground ml-2">({c.weight}% weight)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={c.max_score}
+                                                className="w-20 text-center font-mono font-bold"
+                                                placeholder="0"
+                                                value={scores[c.id] ?? ''}
+                                                onChange={e => {
+                                                    const val = Math.min(c.max_score, Math.max(0, parseFloat(e.target.value) || 0));
+                                                    setScores(prev => ({ ...prev, [c.id]: val }));
+                                                }}
+                                            />
+                                            <span className="text-sm text-muted-foreground">/ {c.max_score}</span>
+                                        </div>
+                                    </div>
+                                    {c.description && (
+                                        <p className="text-xs text-muted-foreground">{c.description}</p>
+                                    )}
+                                    {/* Visual score bar */}
+                                    <div className="w-full bg-muted rounded-full h-2">
+                                        <div
+                                            className="h-2 rounded-full transition-all duration-300 bg-primary"
+                                            style={{ width: `${((scores[c.id] || 0) / c.max_score) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
 
-                        {/* Comments */}
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Overall Comment</Label>
-                            <Textarea
-                                placeholder="Share your feedback about this project..."
-                                className="min-h-[80px]"
-                                value={overallComment}
-                                onChange={e => setOverallComment(e.target.value)}
-                            />
-                        </div>
+                            {/* Weighted Total Display */}
+                            <div className="p-4 rounded-lg bg-primary/5 border-2 border-primary/20 text-center">
+                                <p className="text-sm text-muted-foreground">Weighted Total Score</p>
+                                <p className={`text-4xl font-bold ${weightedTotal >= 80 ? 'text-green-600 dark:text-green-400' :
+                                    weightedTotal >= 60 ? 'text-amber-600 dark:text-amber-400' :
+                                        'text-red-600 dark:text-red-400'}`}>
+                                    {weightedTotal}%
+                                </p>
+                            </div>
 
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-1.5"><Lock className="h-4 w-4" /> Private Notes <span className="text-xs text-muted-foreground">(only visible to you)</span></Label>
-                            <Textarea
-                                placeholder="Personal notes about this evaluation..."
-                                className="min-h-[60px]"
-                                value={privateNotes}
-                                onChange={e => setPrivateNotes(e.target.value)}
-                            />
-                        </div>
+                            {/* Comments */}
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-1.5"><MessageSquare className="h-4 w-4" /> Overall Comment</Label>
+                                <Textarea
+                                    placeholder="Share your feedback about this project..."
+                                    className="min-h-[80px]"
+                                    value={overallComment}
+                                    onChange={e => setOverallComment(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-1.5"><Lock className="h-4 w-4" /> Private Notes <span className="text-xs text-muted-foreground">(only visible to you)</span></Label>
+                                <Textarea
+                                    placeholder="Personal notes about this evaluation..."
+                                    className="min-h-[60px]"
+                                    value={privateNotes}
+                                    onChange={e => setPrivateNotes(e.target.value)}
+                                />
+                            </div>
+                        </div>{/* end rubric section */}
                     </div>
 
                     <DialogFooter>
