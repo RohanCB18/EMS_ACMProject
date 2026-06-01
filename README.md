@@ -1,71 +1,186 @@
-# Event Management System (EMS) — HackOdyssey
+# 🚀 EMS ACM Project — Setup & Run Guide
 
-A centralized platform to manage hackathon operations, registrations, judging, and finance.
+> **Branch:** `unified-backend-final`  
+> **Stack:** Next.js 16 (TypeScript) · FastAPI (Python 3.12) · Firebase / Firestore
 
-## 🚀 Quick Start
+---
 
-### 1. Backend Setup (FastAPI)
-The backend handles authentication, Firestore integration, and core business logic.
+## Prerequisites
+
+| Tool | Minimum Version | Check |
+|------|----------------|-------|
+| Python | 3.10+ | `python3 --version` |
+| Node.js | 18+ | `node --version` |
+| npm | 9+ | `npm --version` |
+| Git | any | `git --version` |
+
+---
+
+## 1 · Clone the repository
 
 ```bash
-# Navigate to the backend directory
+git clone -b unified-backend-final https://github.com/acmrvce/EMS_ACMProject.git
+cd EMS_ACMProject
+```
+
+---
+
+## 2 · Configure secrets (required before running)
+
+### 2a · Firebase Service Account Key (Backend)
+
+1. Go to [Firebase Console](https://console.firebase.google.com) → your project → **Project Settings → Service accounts**
+2. Click **"Generate new private key"** → download the JSON file
+3. Rename it to `serviceAccountKey.json` and place it at:
+
+```
+backend/serviceAccountKey.json
+```
+
+> ⚠️ This file is in `.gitignore` and must **never** be committed.
+
+---
+
+### 2b · Frontend Environment Variables
+
+Create the file `frontend/.env.local` with the following content  
+(values from Firebase Console → Project Settings → General → Your apps):
+
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
+NEXT_PUBLIC_API_URL=http://localhost:8001
+```
+
+> ⚠️ This file is also in `.gitignore` and must **never** be committed.
+
+---
+
+## 3 · Backend Setup (FastAPI)
+
+```bash
+# Navigate to backend
 cd backend
 
-# Create and activate a virtual environment
-python -m venv venv
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate          # macOS / Linux
+# venv\Scripts\activate           # Windows
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Start the server (on port 8000)
-uvicorn app.main:app --reload --port 8000
 ```
-> [!IMPORTANT]
-> Ensure you have the `serviceAccountKey.json` file in the `backend/` root directory for Firebase access.
 
-### 2. Frontend Setup (Next.js)
-The frontend provides the participant and admin dashboards.
+---
+
+## 4 · Frontend Setup (Next.js)
 
 ```bash
-# Navigate to the frontend directory
+# From the repo root, navigate to frontend
 cd frontend
 
 # Install dependencies
 npm install
+```
 
-# Start the development server
+---
+
+## 5 · Run the application
+
+You need **two terminals** running simultaneously.
+
+### Terminal 1 — Backend (FastAPI on port 8001)
+
+```bash
+cd backend
+source venv/bin/activate
+uvicorn app.main:app --reload --port 8001
+```
+
+- API base: **http://localhost:8001**
+- Swagger docs: **http://localhost:8001/docs**
+
+---
+
+### Terminal 2 — Frontend (Next.js on port 3000)
+
+```bash
+cd frontend
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+- App: **http://localhost:3000**
 
-## 🛠 Project Structure
-- **/frontend**: Next.js application (App Router)
-- **/backend/app**: Unified FastAPI application with role-based routing
-- **/backend/aditya, /backend/rohan, etc**: Individual developer workspace folders (deprecated in favor of `/app`)
+---
 
+## 6 · Login & Roles
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Role | Default landing page after login |
+|------|----------------------------------|
+| `admin` / `super_admin` / `organizer` | `/dashboard/admin/roles` (Users & RBAC) |
+| `participant` | `/dashboard/participant` |
+| `judge` | `/dashboard/judge` |
+| `volunteer` | `/dashboard/volunteer` |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 7 · Project Structure
 
-## Learn More
+```
+EMS_ACMProject/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI entry point
+│   │   ├── middleware.py        # Auth / token verification
+│   │   ├── models.py            # Pydantic models
+│   │   ├── core/                # Firebase config
+│   │   └── routers/             # All API route handlers
+│   ├── requirements.txt
+│   ├── serviceAccountKey.json   # YOU create this (gitignored)
+│   └── venv/                    # Created by python3 -m venv
+│
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── auth/            # Login / Register pages
+│   │   │   └── dashboard/
+│   │   │       ├── admin/       # Admin dashboard pages
+│   │   │       └── participant/ # Participant pages (incl. Helpdesk)
+│   │   ├── components/          # Shared UI + layout components
+│   │   └── lib/                 # API clients, Firebase init
+│   ├── .env.local               # YOU create this (gitignored)
+│   └── package.json
+│
+├── .gitignore
+├── API_SCHEMA.md
+└── README.md
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 8 · Common Issues
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### `Token verification failed: Invalid \escape`
+The `serviceAccountKey.json` has a malformed private key. Re-download the key from Firebase Console and replace the file.
 
-## Deploy on Vercel
+### CORS errors in browser
+Ensure the backend is running on **port 8001** and `NEXT_PUBLIC_API_URL=http://localhost:8001` is set in `frontend/.env.local`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Python `ModuleNotFoundError`
+Make sure your virtual environment is activated before running uvicorn:
+```bash
+source backend/venv/bin/activate
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### `npm install` errors
+Clear cache and retry:
+```bash
+cd frontend && rm -rf node_modules package-lock.json && npm install
+```
